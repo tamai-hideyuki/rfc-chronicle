@@ -6,7 +6,6 @@
 import json
 from pathlib import Path
 
-# データ保存ディレクトリ定義
 DATA_DIR = Path.home() / ".rfc_data"
 META_FILE = DATA_DIR / "metadata.json"
 PINS_FILE = DATA_DIR / "pins.json"
@@ -29,4 +28,3 @@ def write_json(file_path: Path, data):
     """Python オブジェクトを JSON ファイルに書き込む"""
     with file_path.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-

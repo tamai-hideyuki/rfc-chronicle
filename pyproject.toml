@@ -1,8 +1,12 @@
 [tool.poetry]
-name = "rfc-chronicle"           # パッケージ名（必須）
-version = "0.1.0"                # バージョン（必須）
+name = "rfc-chronicle"
+version = "0.1.0"
 description = "CLI-based RFC metadata management tool"
 authors = ["あなたの名前 <you@example.com>"]
+
+packages = [
+  { include = "rfc_chronicle", from = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -18,3 +22,8 @@ pytest = "^7.0"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+rfc-chronicle = "rfc_chronicle.cli:cli"
+
+
