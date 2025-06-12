@@ -33,3 +33,14 @@ def fetch_metadata(save: bool = False) -> list[dict]:
     if save:
         write_json(META_FILE, data)
     return data
+
+from .fetch_rfc import fetch_metadata
+
+__all__ = ['fetch_metadata', 'load_all_rfcs']
+
+def load_all_rfcs():
+    """
+    全てのRFCメタデータを取得するラッパー関数。
+    """
+    return fetch_metadata()
+
