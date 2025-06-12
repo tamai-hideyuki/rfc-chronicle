@@ -38,3 +38,15 @@ poetry run pytest tests/test_cli.py
 ```bash
 poetry run pytest -v
 ```
+
+---
+
+### テストまとめ
+
+```bash
+poetry run pytest        # 全部のテストを一括実行
+
+poetry run pytest -v     # 詳細出力
+
+poetry run pytest tests   # testsディレクトリ配下のみ
+```
