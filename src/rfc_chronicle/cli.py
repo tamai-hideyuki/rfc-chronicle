@@ -10,7 +10,7 @@ def cli():
 def fetch():
     """RFC-Editor から最新メタデータを取得してキャッシュ"""
     click.echo("[INFO] Fetching RFC metadata...")
-    # モックが当たるようにここでインポート
+    # モックを確実に反映させるため、コマンド実行時にインポート
     from rfc_chronicle.fetch_rfc import fetch_metadata
     from rfc_chronicle.utils    import META_FILE
 
@@ -24,7 +24,7 @@ def fetch():
 @click.option("--keyword", help="Keyword to search in title")
 def search(status, from_date, to_date, keyword):
     """ローカルキャッシュから RFC を検索"""
-    # モックが当たるようにここでインポート
+    # モックを確実に反映させるため、コマンド実行時にインポート
     from rfc_chronicle.utils import META_FILE, read_json
     data = read_json(META_FILE) or []
     click.echo(f"[DEBUG] Loaded {len(data)} RFC entries from cache")
@@ -33,12 +33,10 @@ def search(status, from_date, to_date, keyword):
     def parse_date(ds: str, is_to=False):
         if not ds:
             return None
-        # 月＋年
         try:
             return datetime.strptime(ds, "%B %Y")
         except ValueError:
             pass
-        # 年のみ
         try:
             dt = datetime.strptime(ds, "%Y")
             if is_to:
@@ -55,25 +53,21 @@ def search(status, from_date, to_date, keyword):
     results = []
     for item in data:
         date_str = item.get("date", "")
-        # 日付パース
         try:
             dt_item = datetime.strptime(date_str, "%B %Y")
         except ValueError:
             click.echo(f"[WARN] Skipping unparseable date: {date_str}")
             continue
-        # フィルタ判定
         status_match = not status or item.get("status") == status
         from_match = not dt_from or dt_item >= dt_from
         to_match = not dt_to or dt_item <= dt_to
         keyword_match = not keyword or keyword.lower() in item.get("title", "").lower()
 
-        # デバッグログ: 各RFCの評価結果
         click.echo(
             f"[DEBUG] Checking RFC {item['number']}: dt_item={dt_item.date()}, "
             f"status_match={status_match}, from_match={from_match}, "
             f"to_match={to_match}, keyword_match={keyword_match}"
         )
-
         if status_match and from_match and to_match and keyword_match:
             click.echo(f"[INFO] Matched RFC {item['number']}")
             results.append(item)
