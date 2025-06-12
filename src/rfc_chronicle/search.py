@@ -1,30 +1,32 @@
-# src/rfc_chronicle/search.py
-import click
-from .utils import read_json, META_FILE
+from datetime import date
+from typing import List, Optional
+from .models import RfcMetadata
 
-@cli.command()
-@click.option("--status", help="Filter by RFC status")
-@click.option("--from-date", "from_date", help="Filter from date YYYY-MM-DD")
-@click.option("--to-date", "to_date", help="Filter to date YYYY-MM-DD")
-@click.option("--keyword", help="Keyword to search in title")
-def search(status, from_date, to_date, keyword):
-    """ローカルキャッシュから RFC を検索"""
-    data = read_json(META_FILE) or []
-    filtered = []
-    for item in data:
-        if status and item["status"] != status:
-            continue
-        if from_date and item["date"] < from_date:
-            continue
-        if to_date and item["date"] > to_date:
-            continue
-        if keyword and keyword.lower() not in item["title"].lower():
-            continue
-        filtered.append(item)
+def filter_rfcs(
+    rfcs: List[RfcMetadata],
+    statuses: Optional[List[str]] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    keyword: Optional[str] = None,
+) -> List[RfcMetadata]:
+    normalized_statuses = {s.lower() for s in statuses} if statuses else None
+    filtered: List[RfcMetadata] = []
 
-    if not filtered:
-        click.echo("No RFCs found.")
-        return
+    for rfc in rfcs:
+        if normalized_statuses is not None and rfc.status.lower() not in normalized_statuses:
+            continue
+        if date_from and rfc.date < date_from:
+            continue
+        if date_to   and rfc.date > date_to:
+            continue
+        if keyword:
+            kw = keyword.lower()
+            haystack = rfc.title.lower()
+            if rfc.abstract:
+                haystack += ' ' + rfc.abstract.lower()
+            haystack += ' ' + ' '.join(rfc.extra_metadata_values())
+            if kw not in haystack:
+                continue
+        filtered.append(rfc)
 
-    for r in filtered:
-        click.echo(f'RFC {r["number"]}: {r["title"]} ({r["date"]}, {r["status"]})')
+    return filtered
