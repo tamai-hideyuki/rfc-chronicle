@@ -111,6 +111,13 @@ rfc fetch \
 – 空リストや None 指定時にフィルタが適用されないことの確認
 – 複数ステータス、複数キーワード（部分一致 vs 完全一致）のケース
 
+<details>
+<summary>test_search.py</summary>
+poetry run pytest tests/test_search.py
+
+
+</details>
+
 ### 動作確認
 – 実際のRFCデータセットを用いた手動確認
 – CIではテストのみならず、CLIのヘルプ表示（--help）もチェック
