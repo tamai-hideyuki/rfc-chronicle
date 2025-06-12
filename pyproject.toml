@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "rfc-chronicle"
+version = "0.1.0"
+description = "CLI-based RFC metadata management tool"
+authors = ["あなたの名前 <you@example.com>"]
+
+packages = [
+  { include = "rfc_chronicle", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+click = "^8.1"
+requests = "^2.31"
+beautifulsoup4 = "^4.12"
+faiss-cpu = "^1.11.0"
+
+[tool.poetry.dev-dependencies]
+# テストなど開発用依存を追加したい場合
+pytest = "^7.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+rfc-chronicle = "rfc_chronicle.cli:cli"
+
+
