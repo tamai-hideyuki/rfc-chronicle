@@ -1,6 +1,4 @@
 import click
-from rfc_chronicle.fetch_rfc import fetch_metadata
-from rfc_chronicle.utils import META_FILE, read_json, PINS_FILE, write_json
 from datetime import datetime
 
 @click.group()
@@ -12,8 +10,12 @@ def cli():
 def fetch():
     """RFC-Editor から最新メタデータを取得してキャッシュ"""
     click.echo("[INFO] Fetching RFC metadata...")
-    count = len(fetch_metadata(save=True))
-    click.echo(f"[INFO] Saved {count} RFC entries to {META_FILE}")
+    # モックが当たるようにここでインポート
+    from rfc_chronicle.fetch_rfc import fetch_metadata
+    from rfc_chronicle.utils    import META_FILE
+
+    data = fetch_metadata(save=True)
+    click.echo(f"[INFO] Saved {len(data)} RFC entries to {META_FILE}")
 
 @cli.command()
 @click.option("--status", help="Filter by RFC status")
@@ -22,6 +24,8 @@ def fetch():
 @click.option("--keyword", help="Keyword to search in title")
 def search(status, from_date, to_date, keyword):
     """ローカルキャッシュから RFC を検索"""
+    # モックが当たるようにここでインポート
+    from rfc_chronicle.utils import META_FILE, read_json
     data = read_json(META_FILE) or []
     click.echo(f"[DEBUG] Loaded {len(data)} RFC entries from cache")
 
@@ -41,6 +45,7 @@ def search(status, from_date, to_date, keyword):
                 return dt.replace(month=12, day=31)
             return dt
         except ValueError:
+            click.echo(f"[WARN] Invalid date format: '{ds}'")
             return None
 
     dt_from = parse_date(from_date)
@@ -86,6 +91,7 @@ def search(status, from_date, to_date, keyword):
 @click.argument("rfc_number")
 def pin(rfc_number):
     """指定した RFC 番号をピン留め"""
+    from rfc_chronicle.utils import PINS_FILE, read_json, write_json
     pins = read_json(PINS_FILE) or []
     if rfc_number in pins:
         click.echo(f"RFC {rfc_number} is already pinned.")
@@ -97,6 +103,7 @@ def pin(rfc_number):
 @cli.command(name="list-pins")
 def list_pins():
     """ピン留めした RFC を一覧表示"""
+    from rfc_chronicle.utils import PINS_FILE, read_json
     pins = read_json(PINS_FILE) or []
     if not pins:
         click.echo("No pinned RFCs.")
@@ -109,6 +116,7 @@ def list_pins():
 @click.argument("rfc_number")
 def unpin(rfc_number):
     """指定した RFC 番号のピンを解除"""
+    from rfc_chronicle.utils import PINS_FILE, read_json, write_json
     pins = read_json(PINS_FILE) or []
     if rfc_number not in pins:
         click.echo(f"RFC {rfc_number} is not pinned.")
