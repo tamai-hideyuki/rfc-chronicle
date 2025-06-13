@@ -62,22 +62,21 @@ def unpin(number):
 def list_cmd(pins_only, show_pins):  # noqa: A002
     """RFC 一覧を取得して表示"""
     items = fetch_metadata_list()
-    # pins-only または show-pins が指定された場合にロード
     pins = load_pins() if (pins_only or show_pins) else []
 
     for it in items:
         num = it.number
         title = it.title
-        label = f"RFC{num:03d}"
-
         if pins_only and num not in pins:
             continue
 
-        line = f"{label} {title}"
-        if show_pins and num in pins:
-            line = f"📌 {line}"
-
-        click.echo(line)
+        label = f"RFC{num:03d} {title}"
+        if show_pins:
+            # pinned: show 📌, else indent with spaces
+            prefix = "📌 " if num in pins else "   "
+            click.echo(f"{prefix}{label}")
+        else:
+            click.echo(label)
 
 if __name__ == '__main__':
     cli()
