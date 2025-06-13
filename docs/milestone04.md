@@ -34,3 +34,26 @@
 - [ ] cli.py の show コマンドと --output オプション追加
 
 - [ ] ユニットテストの実装と CI への組み込み
+
+---
+
+### 実装後
+
+```text
+# 依存が最新か確認
+poetry install
+
+# すべてのテストを実行
+poetry run pytest -q
+
+# あるいは、show コマンドに限定してテスト
+poetry run pytest tests/test_cli_show.py -q
+
+# 次に実装した CLI コマンド自体を手動で動かしてみます。たとえば RFC 791
+poetry run rfc-chronicle show 791
+
+# JSON や CSV 出力を確認したいときは：
+poetry run rfc-chronicle show 791 --output json
+poetry run rfc-chronicle show 791 --output csv
+
+```

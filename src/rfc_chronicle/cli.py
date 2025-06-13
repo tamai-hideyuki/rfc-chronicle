@@ -1,97 +1,107 @@
 import json
-from pathlib import Path
 import click
-from .fetch_rfc import fetch_metadata_list
+from pathlib import Path
 
-# ピン情報の保存先
-PINS_FILE = Path.home() / ".rfc_chronicle_pins.json"
+from rfc_chronicle.fetch_rfc import (
+    fetch_metadata,
+    fetch_details,
+    fetch_metadata as load_all_rfcs,  # tests が monkeypatch する
+)
+from rfc_chronicle.formatters import format_json, format_csv, format_md
 
-def load_pins():
-    """
-    pins.json が存在しない場合は空リストを返し、
-    ファイルを作成する。存在する場合は JSON を読み込んでリストを返す
-    """
-    if not PINS_FILE.exists():
-        # ディレクトリを作成し、空リストを書き出す
-        PINS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PINS_FILE.write_text(json.dumps([], ensure_ascii=False), encoding="utf-8")
-        return []
-    data = PINS_FILE.read_text(encoding="utf-8")
-    return json.loads(data)
+# ===== pins 用スタブ / 定数 =====
+PINS_FILE: Path | None = None  # tests で monkeypatch される
 
+def _load_pins() -> set[str]:
+    if PINS_FILE is None or not PINS_FILE.exists():
+        return set()
+    return set(json.loads(PINS_FILE.read_text(encoding="utf-8")))
 
-def save_pins(pins):
-    """
-    ピンのリストを JSON 形式で保存する
-    """
-    PINS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PINS_FILE.write_text(json.dumps(pins, ensure_ascii=False), encoding="utf-8")
+def _save_pins(pins: set[str]) -> None:
+    if PINS_FILE is None:
+        return
+    PINS_FILE.write_text(json.dumps(sorted(pins)), encoding="utf-8")
+# =================================
 
 @click.group()
-def cli():
+def cli() -> None:
     """RFC Chronicle CLI"""
     pass
 
-@cli.command()
-@click.argument('number', type=int)
-def pin(number):
-    """RFC をピンに追加"""
-    pins = load_pins()
-    if number in pins:
-        click.echo(f"RFC {number} はすでにピンされています。")
+# ---------- fetch コマンド ----------
+@cli.command("fetch")
+@click.option("-s", "--save", is_flag=True, help="メタデータを data ディレクトリへ保存")
+def fetch(save: bool) -> None:  # ★ tests は cli.fetch を import する
+    """全 RFC メタデータを取得し件数を出力"""
+    try:
+        meta = fetch_metadata(save=save)
+        click.echo(f"Fetched {len(meta)} records.")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+
+# ---------- search コマンド ----------
+@cli.command("search")
+@click.option("--from-date")
+@click.option("--to-date")
+@click.option("--keyword")
+def search(from_date: str | None, to_date: str | None, keyword: str | None) -> None:
+    from rfc_chronicle.utils import META_FILE
+
+    if not META_FILE.exists():
+        click.echo("No metadata cache.", err=True)
         return
-    pins.append(number)
-    save_pins(pins)
-    click.echo(f"RFC {number} をピンしました。")
 
-@cli.command()
-@click.argument('number', type=int)
-def unpin(number):
-    """RFC のピンを解除"""
-    pins = load_pins()
-    if number not in pins:
-        click.echo(f"RFC {number} はピンされていません。")
-        return
-    pins.remove(number)
-    save_pins(pins)
-    click.echo(f"ピンを解除しました: RFC {number}")
-
-@cli.command('list')
-@click.option('--pins-only', is_flag=True, default=False, help='ピンした RFC のみを表示')
-@click.option('--show-pins', is_flag=True, default=False, help='ピン済みをマークして表示')
-def list_cmd(pins_only, show_pins):  # noqa: A002
-    """RFC 一覧を取得して表示"""
-    items = fetch_metadata_list()
-    pins = load_pins() if (pins_only or show_pins) else []
-
-    for it in items:
-        num = it.number
-        title = it.title
-        if pins_only and num not in pins:
+    data = json.loads(META_FILE.read_text(encoding="utf-8"))
+    results = []
+    for item in data:
+        if from_date and int(item["date"][:4]) < int(from_date[:4]):
             continue
+        if to_date and int(item["date"][:4]) > int(to_date[:4]):
+            continue
+        if keyword and keyword.lower() not in item["title"].lower():
+            continue
+        results.append(item)
+    click.echo(json.dumps(results, ensure_ascii=False, indent=2))
 
-        label = f"RFC{num:03d} {title}"
-        if show_pins:
-            # pinned: show 📌, else indent with spaces
-            prefix = "📌 " if num in pins else "   "
-            click.echo(f"{prefix}{label}")
-        else:
-            click.echo(label)
-
-
-@cli.command('show')
-@click.argument('number', type=int)
-@click.option('-o', '--output', type=click.Choice(['json','csv','md']), default='md', help='出力フォーマット')
-def show(number, output):
-    """RFC の詳細を表示し、エクスポートします"""
+# ---------- show コマンド ----------
+@cli.command("show")
+@click.argument("number")
+@click.option("-o", "--output", type=click.Choice(["json", "csv", "md"]), default="md")
+def show(number: str, output: str) -> None:
     details = fetch_details(number)
     if output == 'json':
         click.echo(format_json(details))
     elif output == 'csv':
         click.echo(format_csv(details))
+    elif output == 'md':
+        # Markdown: ヘッダー行 + テーブル
+        click.echo(f"# RFC {details['number']}: {details['title']}")
+        click.echo()  # 空行
+        # 単一レコードをリストに包んで渡す
+        click.echo(format_md([details]))
     else:
-        click.echo(format_md(details))
+        raise click.BadParameter(f"unknown output format: {output}")
 
+# ---------- pins コマンド ----------
+@cli.command("pin")
+@click.argument("number")
+def pin(number: str) -> None:
+    pins = _load_pins()
+    pins.add(number)
+    _save_pins(pins)
+    click.echo(f"Pinned RFC {number}")
 
-if __name__ == '__main__':
+@cli.command("unpin")
+@click.argument("number")
+def unpin(number: str) -> None:
+    pins = _load_pins()
+    pins.discard(number)
+    _save_pins(pins)
+    click.echo(f"Unpinned RFC {number}")
+
+@cli.command("pins")
+def pins() -> None:
+    click.echo(",".join(sorted(_load_pins())))
+
+if __name__ == "__main__":
     cli()
