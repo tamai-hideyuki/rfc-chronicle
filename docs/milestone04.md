@@ -2,6 +2,17 @@
 
 - **rfc-chronicle に詳細表示とエクスポート機能を追加します。以下の項目ごとに実装していきます。**
 
+### 主な実装の流れ
+
+- fetch_details の実装
+  - メタデータ取得に加え、RFC 本文をダウンロードする関数を実装
+- フォーマッタ (formatters.py) の作成
+  - SON/CSV/Markdown 変換関数を実装
+- show コマンド追加
+  - cli.py に show <number> --output [json|csv|md] を追加
+- テストの追加
+  - tests/test_cli_show.py で各フォーマット出力を検証
+
 ---
 
 ### show コマンドの追加
