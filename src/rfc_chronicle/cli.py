@@ -1,107 +1,118 @@
 import json
 import click
 from pathlib import Path
+from typing import Optional, Set, List, Dict, Any
 
-from rfc_chronicle.fetch_rfc import (
-    fetch_metadata,
-    fetch_details,
-    fetch_metadata as load_all_rfcs,  # tests が monkeypatch する
-)
+from rfc_chronicle.fetch_rfc import client as rfc_client
 from rfc_chronicle.formatters import format_json, format_csv, format_md
+from rfc_chronicle.utils import META_FILE
 
-# ===== pins 用スタブ / 定数 =====
-PINS_FILE: Path | None = None  # tests で monkeypatch される
+# テスト用にモック可能なピン保存先（Noneなら無効化）
+PINS_FILE: Optional[Path] = None
 
-def _load_pins() -> set[str]:
-    if PINS_FILE is None or not PINS_FILE.exists():
+def _load_pins() -> Set[str]:
+    if not PINS_FILE or not PINS_FILE.exists():
         return set()
     return set(json.loads(PINS_FILE.read_text(encoding="utf-8")))
 
-def _save_pins(pins: set[str]) -> None:
-    if PINS_FILE is None:
+def _save_pins(pins: Set[str]) -> None:
+    if not PINS_FILE:
         return
-    PINS_FILE.write_text(json.dumps(sorted(pins)), encoding="utf-8")
-# =================================
+    PINS_FILE.write_text(json.dumps(sorted(pins), ensure_ascii=False), encoding="utf-8")
 
 @click.group()
 def cli() -> None:
     """RFC Chronicle CLI"""
-    pass
 
-# ---------- fetch コマンド ----------
-@cli.command("fetch")
-@click.option("-s", "--save", is_flag=True, help="メタデータを data ディレクトリへ保存")
-def fetch(save: bool) -> None:  # ★ tests は cli.fetch を import する
-    """全 RFC メタデータを取得し件数を出力"""
+@cli.command()
+@click.option('-s', '--save', is_flag=True, help="ローカルにメタデータを保存")
+def fetch(save: bool) -> None:
+    """全 RFC のメタデータを取得"""
     try:
-        meta = fetch_metadata(save=save)
+        meta = rfc_client.fetch_metadata(save)
         click.echo(f"Fetched {len(meta)} records.")
-    except Exception as exc:
-        click.echo(f"Error: {exc}", err=True)
+        if save:
+            click.echo(f"Saved to {META_FILE}")
+    except Exception as e:
+        click.echo(f"Error fetching metadata: {e}", err=True)
 
-# ---------- search コマンド ----------
-@cli.command("search")
-@click.option("--from-date")
-@click.option("--to-date")
-@click.option("--keyword")
-def search(from_date: str | None, to_date: str | None, keyword: str | None) -> None:
-    from rfc_chronicle.utils import META_FILE
-
+@cli.command()
+@click.option('--from-date', type=int, help="発行年 FROM (YYYY)")
+@click.option('--to-date',   type=int, help="発行年 TO   (YYYY)")
+@click.option('--keyword',   type=str, help="タイトルに含むキーワード")
+def search(
+    from_date: Optional[int],
+    to_date:   Optional[int],
+    keyword:   Optional[str],
+) -> None:
+    """キャッシュ済みメタデータを絞り込み検索"""
     if not META_FILE.exists():
-        click.echo("No metadata cache.", err=True)
+        click.echo("No metadata cache. まずは `fetch` を実行してください。", err=True)
         return
 
-    data = json.loads(META_FILE.read_text(encoding="utf-8"))
-    results = []
-    for item in data:
-        if from_date and int(item["date"][:4]) < int(from_date[:4]):
-            continue
-        if to_date and int(item["date"][:4]) > int(to_date[:4]):
-            continue
+    data: List[Dict[str, Any]] = json.loads(META_FILE.read_text(encoding="utf-8"))
+
+    def _matches(item: Dict[str, Any]) -> bool:
+        year = int(item["date"][:4])
+        if from_date and year < from_date:
+            return False
+        if to_date   and year > to_date:
+            return False
         if keyword and keyword.lower() not in item["title"].lower():
-            continue
-        results.append(item)
+            return False
+        return True
+
+    results = [item for item in data if _matches(item)]
     click.echo(json.dumps(results, ensure_ascii=False, indent=2))
 
-# ---------- show コマンド ----------
-@cli.command("show")
-@click.argument("number")
-@click.option("-o", "--output", type=click.Choice(["json", "csv", "md"]), default="md")
-def show(number: str, output: str) -> None:
-    details = fetch_details(number)
+@cli.command()
+@click.argument('number', type=int)
+@click.option('-o', '--output', type=click.Choice(['json','csv','md']), default='md')
+def show(number: int, output: str) -> None:
+    """指定RFCの詳細（メタデータ＋本文）を表示"""
+    try:
+        details = rfc_client.fetch_details(number)
+    except ValueError as e:
+        click.echo(str(e), err=True)
+        return
+
     if output == 'json':
         click.echo(format_json(details))
     elif output == 'csv':
         click.echo(format_csv(details))
-    elif output == 'md':
-        # Markdown: ヘッダー行 + テーブル
-        click.echo(f"# RFC {details['number']}: {details['title']}")
-        click.echo()  # 空行
-        # 単一レコードをリストに包んで渡す
+    else:  # Markdown
+        click.echo(f"# RFC {details['number']}: {details['title']}\n")
         click.echo(format_md([details]))
-    else:
-        raise click.BadParameter(f"unknown output format: {output}")
 
-# ---------- pins コマンド ----------
-@cli.command("pin")
-@click.argument("number")
+@cli.command()
+@click.argument('number', type=str)
 def pin(number: str) -> None:
+    """RFC番号をピン（保存）"""
     pins = _load_pins()
+    if number in pins:
+        click.echo(f"RFC {number} is already pinned.", err=True)
+        return
     pins.add(number)
     _save_pins(pins)
     click.echo(f"Pinned RFC {number}")
 
-@cli.command("unpin")
-@click.argument("number")
+@cli.command()
+@click.argument('number', type=str)
 def unpin(number: str) -> None:
+    """ピンを外す"""
     pins = _load_pins()
-    pins.discard(number)
+    if number not in pins:
+        click.echo(f"RFC {number} is not pinned.", err=True)
+        return
+    pins.remove(number)
     _save_pins(pins)
     click.echo(f"Unpinned RFC {number}")
 
-@cli.command("pins")
-def pins() -> None:
-    click.echo(",".join(sorted(_load_pins())))
+@cli.command('pins')
+def list_pins() -> None:
+    """現在ピンしているRFC一覧を表示"""
+    pins = sorted(_load_pins())
+    click.echo("\n".join(pins) if pins else "No pinned RFCs.")
 
 if __name__ == "__main__":
     cli()
