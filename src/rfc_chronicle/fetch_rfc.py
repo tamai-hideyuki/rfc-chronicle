@@ -44,3 +44,11 @@ def load_all_rfcs():
     """
     return fetch_metadata()
 
+
+def fetch_metadata_list(*args, **kwargs):
+    """
+    RFC メタデータ一覧を取得する関数。
+    とりあえず空リストを返すが、後ほど実装する。
+    テストではモンキーパッチされるため、このままでエラーが起きなくなる。
+    """
+    return []

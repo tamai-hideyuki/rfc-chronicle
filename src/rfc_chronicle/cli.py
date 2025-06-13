@@ -1,76 +1,82 @@
+import json
+from pathlib import Path
 import click
-from datetime import datetime
-from typing import Optional, List
+from .fetch_rfc import fetch_metadata_list
 
-from .search import filter_rfcs
-from .fetch_rfc import load_all_rfcs  # Assumes this function loads all RFC metadata
+# ピン情報の保存先
+PINS_FILE = Path.home() / ".rfc_chronicle_pins.json"
 
-
-def parse_date(date_str: Optional[str]) -> Optional[datetime.date]:
+def load_pins():
     """
-    YYYY-MM-DD形式の文字列をdateオブジェクトに変換。
-    Noneまたは空文字の場合はNoneを返す。
+    pins.json が存在しない場合は空リストを返し、
+    ファイルを作成する。存在する場合は JSON を読み込んでリストを返す
     """
-    if not date_str:
-        return None
-    try:
-        return datetime.strptime(date_str, '%Y-%m-%d').date()
-    except ValueError as e:
-        raise click.UsageError(f"Invalid date format: {date_str}. Use YYYY-MM-DD.")
+    if not PINS_FILE.exists():
+        # ディレクトリを作成し、空リストを書き出す
+        PINS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PINS_FILE.write_text(json.dumps([], ensure_ascii=False), encoding="utf-8")
+        return []
+    data = PINS_FILE.read_text(encoding="utf-8")
+    return json.loads(data)
 
-@click.command()
-@click.option(
-    '--status', '-s',
-    help='フィルタ対象のステータスをカンマ区切りで指定 (例: draft,active)',
-    default=None
-)
-@click.option(
-    '--from', 'date_from',
-    help='開始日 (YYYY-MM-DD)',
-    default=None
-)
-@click.option(
-    '--to', 'date_to',
-    help='終了日 (YYYY-MM-DD)',
-    default=None
-)
-@click.option(
-    '--keyword', '-k',
-    help='タイトルやabstractなどに含まれるキーワードでフィルタ',
-    default=None
-)
-def fetch(status: Optional[str], date_from: Optional[str], date_to: Optional[str], keyword: Optional[str]):
+
+def save_pins(pins):
     """
-    RFCメタデータを指定条件でフィルタリングして一覧表示するコマンド。
+    ピンのリストを JSON 形式で保存する
     """
-    # ステータスのパース: カンマ区切り
-    statuses: Optional[List[str]] = None
-    if status:
-        statuses = [s.strip() for s in status.split(',') if s.strip()]
+    PINS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PINS_FILE.write_text(json.dumps(pins, ensure_ascii=False), encoding="utf-8")
 
-    # 日付のパース
-    dt_from = parse_date(date_from)
-    dt_to = parse_date(date_to)
+@click.group()
+def cli():
+    """RFC Chronicle CLI"""
+    pass
 
-    # RFCメタデータ読み込み
-    all_rfcs = load_all_rfcs()
-
-    # フィルタ適用
-    filtered = filter_rfcs(
-        all_rfcs,
-        statuses=statuses,
-        date_from=dt_from,
-        date_to=dt_to,
-        keyword=keyword
-    )
-
-    # 結果出力
-    if not filtered:
-        click.echo('No RFCs match the given criteria.')
+@cli.command()
+@click.argument('number', type=int)
+def pin(number):
+    """RFC をピンに追加"""
+    pins = load_pins()
+    if number in pins:
+        click.echo(f"RFC {number} はすでにピンされています。")
         return
+    pins.append(number)
+    save_pins(pins)
+    click.echo(f"RFC {number} をピンしました。")
 
-    for r in filtered:
-        click.echo(f"{r.id}\t{r.title}\t{r.status}\t{r.date}")
+@cli.command()
+@click.argument('number', type=int)
+def unpin(number):
+    """RFC のピンを解除"""
+    pins = load_pins()
+    if number not in pins:
+        click.echo(f"RFC {number} はピンされていません。")
+        return
+    pins.remove(number)
+    save_pins(pins)
+    click.echo(f"ピンを解除しました: RFC {number}")
+
+@cli.command('list')
+@click.option('--pins-only', is_flag=True, default=False, help='ピンした RFC のみを表示')
+@click.option('--show-pins', is_flag=True, default=False, help='ピン済みをマークして表示')
+def list_cmd(pins_only, show_pins):  # noqa: A002
+    """RFC 一覧を取得して表示"""
+    items = fetch_metadata_list()
+    pins = load_pins() if (pins_only or show_pins) else []
+
+    for it in items:
+        num = it.number
+        title = it.title
+        if pins_only and num not in pins:
+            continue
+
+        label = f"RFC{num:03d} {title}"
+        if show_pins:
+            # pinned: show 📌, else indent with spaces
+            prefix = "📌 " if num in pins else "   "
+            click.echo(f"{prefix}{label}")
+        else:
+            click.echo(label)
 
 if __name__ == '__main__':
-    fetch()
+    cli()
