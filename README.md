@@ -41,6 +41,23 @@ poetry install
 
 ## 使い方:
 
+```bash
+## 現在使えるコマンド一覧
+
+```bash
+# 全 RFC のメタデータを取得し件数を出力
+$ poetry run rfc-chronicle fetch
+
+# JSON 形式で RFC 791 の詳細を出力
+$ poetry run rfc-chronicle show 791 --output json
+
+# CSV テーブル形式で RFC 26 の詳細を出力
+$ poetry run rfc-chronicle show 26 --output csv
+
+# デフォルト（Markdown）で RFC 10 の詳細を出力
+$ poetry run rfc-chronicle show 10
+
+```
 
 ### RFCメタデータの取得
 
@@ -74,6 +91,7 @@ poetry run rfc pin remove <RFC番号>
 poetry run rfc export --output md > rfc_list.md
 ```
 ---
+
 
 ## コントリビュート：
 
