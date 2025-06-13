@@ -2,7 +2,7 @@
 name = "rfc-chronicle"
 version = "0.1.0"
 description = "CLI-based RFC metadata management tool"
-authors = ["あなたの名前 <you@example.com>"]
+authors = ["me"]
 
 packages = [
   { include = "rfc_chronicle", from = "src" }
@@ -14,10 +14,6 @@ click = "^8.1"
 requests = "^2.31"
 beautifulsoup4 = "^4.12"
 faiss-cpu = "^1.11.0"
-
-[tool.poetry.dev-dependencies]
-# テストなど開発用依存を追加したい場合
-pytest = "^7.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"

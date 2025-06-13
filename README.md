@@ -1,3 +1,106 @@
+# rfc-chronicle
+
+![PyPI version](https://img.shields.io/pypi/v/rfc-chronicle.svg)
+![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)
+![Poetry](https://img.shields.io/badge/poetry-1.5%2B-blue.svg)
+![faiss](https://img.shields.io/badge/faiss-enabled-brightgreen.svg)
+![Click](https://img.shields.io/badge/click-8.1%2B-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
+
+## 概要：
+`rfc-chronicle` は、[RFCエディター](https://www.rfc-editor.org/) に公開されているRFC（Request for Comments）情報をローカルに取り込み、検索・閲覧・エクスポートできるCLIツールです。
+
+- RFCのメタデータ取得
+- 埋め込み検索（FAISSベース）による全文検索
+- レコードのピン留め・管理
+- JSON / CSV / Markdown形式でのエクスポート
+
+## 技術スタック：
+
+![Python](https://img.shields.io/badge/Python-3.13%2B-blue.svg)
+![Poetry](https://img.shields.io/badge/Poetry-1.5%2B-blue.svg)
+![Click](https://img.shields.io/badge/Click-8.1%2B-purple.svg)
+![Requests](https://img.shields.io/badge/Requests-2.28%2B-green.svg)
+![BeautifulSoup](https://img.shields.io/badge/BeautifulSoup-4.11%2B-yellow.svg)
+![FAISS](https://img.shields.io/badge/FAISS-1.7%2B-brightgreen.svg)
+![Markdown](https://img.shields.io/badge/Output-Markdown-lightgrey.svg)
+![CSV](https://img.shields.io/badge/Output-CSV-orange.svg)
+![JSON](https://img.shields.io/badge/Output-JSON-blueviolet.svg)
+
+## インストール
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/tamai-hideyuki/rfc-chronicle.git
+cd rfc-chronicle
+
+# Poetryで依存関係をインストール
+poetry install
+````
+---
+
+## 使い方:
+
+```bash
+## 現在使えるコマンド一覧
+
+```bash
+# 全 RFC のメタデータを取得し件数を出力
+$ poetry run rfc-chronicle fetch
+
+# JSON 形式で RFC 791 の詳細を出力
+$ poetry run rfc-chronicle show 791 --output json
+
+# CSV テーブル形式で RFC 26 の詳細を出力
+$ poetry run rfc-chronicle show 26 --output csv
+
+# デフォルト（Markdown）で RFC 10 の詳細を出力
+$ poetry run rfc-chronicle show 10
+
+```
+
+### RFCメタデータの取得
+
+```bash
+poetry run rfc show 1-9000
+```
+
+### 埋め込み検索
+
+```bash
+poetry run rfc search "検索キーワード"
+```
+
+### 詳細表示
+
+```bash
+poetry run rfc show <RFC番号> [--output json|csv|md]
+```
+
+### ピン留め管理
+
+```bash
+poetry run rfc pin add <RFC番号>
+poetry run rfc pin list
+poetry run rfc pin remove <RFC番号>
+```
+
+### エクスポート
+
+```bash
+poetry run rfc export --output md > rfc_list.md
+```
+---
+
+
+## コントリビュート：
+
+1. Issueを立てる
+2. ブランチを作成 (`feat/`, `fix/` など)
+3. PRを送付し、CIが通ったらマージを依頼
+
+---
+
 ## 構成案(フルパッケージのURLからのブラウザ表示までのシーケンス図)
 
 ```mermaid
