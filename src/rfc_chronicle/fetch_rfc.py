@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from functools import lru_cache
 from typing import Any, Dict, List, Union
 from pathlib import Path
+from tqdm.auto import tqdm
 
 from rfc_chronicle.utils import ensure_data_dir, write_json, META_FILE
 
@@ -39,6 +40,8 @@ class RFCClient:
     def fetch_metadata(self, save: bool = False) -> List[Dict[str, Any]]:
         """
         全 RFC のメタデータ一覧を取得し、必要ならローカル保存。
+        プログレスインジケーターで進行状況を可能な限り滑らかに表示。
+        メモリは問題にならない前提。
         戻り値の 'number' は文字列のまま。
         """
         ensure_data_dir()
@@ -57,7 +60,16 @@ class RFCClient:
             raise RuntimeError("RFC-Editor HTML 構造が変わりました")
 
         meta_list: List[Dict[str, Any]] = []
-        for tr in rows:
+        # tqdm: mininterval=0, miniters=1, smoothing=0 for max smoothness
+        for tr in tqdm(
+            rows,
+            desc="Parsing RFC metadata",
+            unit="item",
+            mininterval=0.0,
+            miniters=1,
+            smoothing=0.0,
+            dynamic_ncols=True,
+        ):
             cols = tr.find_all("td")
             if len(cols) < 7:
                 continue
