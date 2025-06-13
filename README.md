@@ -1,4 +1,4 @@
-# 名称：rfc-chronicle
+# rfc-chronicle
 
 ![PyPI version](https://img.shields.io/pypi/v/rfc-chronicle.svg)
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)
