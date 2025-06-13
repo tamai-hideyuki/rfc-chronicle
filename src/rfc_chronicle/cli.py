@@ -78,5 +78,20 @@ def list_cmd(pins_only, show_pins):  # noqa: A002
         else:
             click.echo(label)
 
+
+@cli.command('show')
+@click.argument('number', type=int)
+@click.option('-o', '--output', type=click.Choice(['json','csv','md']), default='md', help='出力フォーマット')
+def show(number, output):
+    """RFC の詳細を表示し、エクスポートします"""
+    details = fetch_details(number)
+    if output == 'json':
+        click.echo(format_json(details))
+    elif output == 'csv':
+        click.echo(format_csv(details))
+    else:
+        click.echo(format_md(details))
+
+
 if __name__ == '__main__':
     cli()
