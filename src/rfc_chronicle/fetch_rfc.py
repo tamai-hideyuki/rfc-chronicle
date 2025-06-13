@@ -1,68 +1,79 @@
-"""
-RFC-Editor からメタデータを取得するロジック
-"""
+# src/rfc_chronicle/fetch_rfc.py
+
 import requests
 from bs4 import BeautifulSoup
+from typing import Dict, Any
+
 from rfc_chronicle.utils import ensure_data_dir, write_json, META_FILE
 
-def fetch_metadata(save: bool = False) -> list[dict]:
+BASE_SEARCH_URL = (
+    "https://www.rfc-editor.org/search/rfc_search_detail.php"
+    "?pubstatus%5B%5D=Any&pub_date_type=any"
+)
+BASE_TEXT_URL = "https://www.rfc-editor.org/rfc/rfc{number}.txt"
+
+
+def fetch_metadata(save: bool = False) -> list[Dict[str, Any]]:
+    """全RFCのメタデータ一覧を取得"""
     ensure_data_dir()
-    url = (
-        "https://www.rfc-editor.org/search/rfc_search_detail.php?"
-        "pubstatus%5B%5D=Any&pub_date_type=any"
-    )
-    resp = requests.get(url)
+    resp = requests.get(BASE_SEARCH_URL)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     tables = soup.find_all("table")
+
+    # 実際のデータは3番目のテーブルに格納されている想定
     if len(tables) < 3:
-        print(f"Error: Expected at least 3 tables, found {len(tables)}.")
-        return []
-    target = tables[2]
+        raise RuntimeError(f"Expected ≥3 tables, found {len(tables)}")
+
+    rows = tables[2].find_all("tr")[1:]
     data = []
-    for row in target.find_all("tr")[1:]:
-        cols = row.find_all("td")
+    for tr in rows:
+        cols = tr.find_all("td")
         if len(cols) < 7:
             continue
         data.append({
-            "number": cols[0].get_text(strip=True),
+            "number": int(cols[0].get_text(strip=True)),
             "title": cols[2].get_text(strip=True),
             "date": cols[4].get_text(strip=True),
             "status": cols[6].get_text(strip=True),
         })
+
     if save:
         write_json(META_FILE, data)
     return data
 
-from .fetch_rfc import fetch_metadata
 
-__all__ = ['fetch_metadata', 'load_all_rfcs']
+def download_rfc_text(number: int) -> str:
+    """指定RFC番号の本文テキストを取得"""
+    url = BASE_TEXT_URL.format(number=number)
+    resp = requests.get(url)
+    resp.raise_for_status()
+    return resp.text
 
-def load_all_rfcs():
+
+def fetch_details(number: int, save_meta: bool = False) -> Dict[str, Any]:
     """
-    全てのRFCメタデータを取得するラッパー関数。
+    RFC#<number> のメタデータと本文を取得して dict で返す
+    - number: RFC 番号
+    - save_meta: メタデータ一覧をファイルに保存するかどうか
     """
-    return fetch_metadata()
+    # 1) メタデータ一覧を取得（必要なら保存）
+    all_meta = fetch_metadata(save=save_meta)
 
+    # 2) 指定番号のメタデータを検索
+    try:
+        meta = next(item for item in all_meta if item["number"] == number)
+    except StopIteration:
+        raise ValueError(f"RFC {number} のメタデータが見つかりません")
 
-def fetch_metadata_list(*args, **kwargs):
-    """
-    RFC メタデータ一覧を取得する関数。
-    とりあえず空リストを返すが、後ほど実装する。
-    テストではモンキーパッチされるため、このままでエラーが起きなくなる。
-    """
-    return []
-
-from rfc_chronicle.fetch_rfc import fetch_metadata
-
-def fetch_details(number: int) -> dict:
-    """RFC#<number> のメタデータと本文を取得して dict で返す"""
-    # メタデータ取得
-    metadata = fetch_metadata(number)
-    # 本文テキストをダウンロード
+    # 3) 本文テキストを取得
     body = download_rfc_text(number)
-    # 結合して詳細を返す
+
+    # 4) 結合して返却
     return {
-        **metadata,
-        'body': body
+        **meta,
+        "body": body
     }
+
+
+__all__ = ["fetch_metadata", "download_rfc_text", "fetch_details"]
