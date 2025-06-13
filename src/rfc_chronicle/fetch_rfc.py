@@ -52,3 +52,17 @@ def fetch_metadata_list(*args, **kwargs):
     テストではモンキーパッチされるため、このままでエラーが起きなくなる。
     """
     return []
+
+from rfc_chronicle.fetch_rfc import fetch_metadata
+
+def fetch_details(number: int) -> dict:
+    """RFC#<number> のメタデータと本文を取得して dict で返す"""
+    # メタデータ取得
+    metadata = fetch_metadata(number)
+    # 本文テキストをダウンロード
+    body = download_rfc_text(number)
+    # 結合して詳細を返す
+    return {
+        **metadata,
+        'body': body
+    }
