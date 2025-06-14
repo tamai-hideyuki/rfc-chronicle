@@ -1,82 +1,84 @@
 import re
+import time
+from pathlib import Path
+from typing import Optional, Any, Dict, List, Union
+
 import requests
+from requests import Response
 from bs4 import BeautifulSoup
 from functools import lru_cache
-from typing import Any, Dict, List, Union
-from pathlib import Path
 from tqdm.auto import tqdm
 
 from rfc_chronicle.utils import ensure_data_dir, write_json, META_FILE
 
+def _get_with_retry(
+    url: str,
+    session: requests.Session,
+    max_retries: int = 3,
+    backoff_factor: float = 0.5,
+    headers: Optional[dict] = None
+) -> Response:
+    """max_retries 回までリトライしつつ GET し、最終的に raise_for_status() する"""
+    for i in range(1, max_retries + 1):
+        # `timeout` を外して DummySession にも対応
+        resp = session.get(url, headers=headers or {})
+        if resp.status_code in (200, 304):
+            return resp
+        time.sleep(backoff_factor * (2 ** (i - 1)))
+    resp.raise_for_status()
+    return resp  # 型的に到達しない
+
 class RFCClient:
     """
-    RFC-Editor からメタデータ一覧および本文を取得するクライアント。
+    RFC-Editor からメタデータ一覧および本文を取得し、
+    ローカルにテキストを保存できるクライアント。
     """
 
     BASE_SEARCH_URL = "https://www.rfc-editor.org/search/rfc_search_detail.php"
-    DEFAULT_PARAMS = {
-        "pubstatus[]": "Any",       # 全ステータス
-        "pub_date_type": "any",     # 全期間
-        "page": "All",              # 全件取得
-    }
     BASE_TEXT_URL = "https://www.rfc-editor.org/rfc/rfc{number}.txt"
-    TABLE_INDEX = 2  # メタデータ表があるテーブルのインデックス（0始まり）
+    DEFAULT_PARAMS = {
+        "pubstatus[]": "Any",
+        "pub_date_type": "any",
+        "page": "All",
+    }
+    TABLE_INDEX = 2  # メタデータ表のインデックス
 
-    def __init__(self, session: requests.Session = None) -> None:
+    def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
     @staticmethod
     def _normalize_number(num_str: str) -> int:
-        """
-        "RFC 1" や "1" のような表記から最初の数字部分を抽出し int 化。
-        数字が見つからなければ ValueError を投げる。
-        """
-        match = re.search(r"\d+", num_str)
-        if not match:
+        m = re.search(r"\d+", num_str)
+        if not m:
             raise ValueError(f"Invalid RFC number: {num_str!r}")
-        return int(match.group())
+        return int(m.group())
 
     @lru_cache(maxsize=1)
     def fetch_metadata(self, save: bool = False) -> List[Dict[str, Any]]:
-        """
-        全 RFC のメタデータ一覧を取得し、必要ならローカル保存。
-        プログレスインジケーターで進行状況を可能な限り滑らかに表示。
-        メモリは問題にならない前提。
-        戻り値の 'number' は文字列のまま。
-        """
         ensure_data_dir()
-        response = self.session.get(
+        resp = self.session.get(
             self.BASE_SEARCH_URL,
             params=self.DEFAULT_PARAMS,
-            timeout=30,
+            timeout=30
         )
-        response.raise_for_status()
+        resp.raise_for_status()
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(resp.text, "html.parser")
         tables = soup.find_all("table")
         try:
             rows = tables[self.TABLE_INDEX].find_all("tr")[1:]
         except IndexError:
-            raise RuntimeError("RFC-Editor HTML 構造が変わりました")
+            raise RuntimeError("RFC-Editor HTML structure changed")
 
         meta_list: List[Dict[str, Any]] = []
-        # tqdm: mininterval=0, miniters=1, smoothing=0 for max smoothness
-        for tr in tqdm(
-            rows,
-            desc="Parsing RFC metadata",
-            unit="item",
-            mininterval=0.0,
-            miniters=1,
-            smoothing=0.0,
-            dynamic_ncols=True,
-        ):
+        for tr in tqdm(rows, desc="Parsing RFC metadata", dynamic_ncols=True):
             cols = tr.find_all("td")
             if len(cols) < 7:
                 continue
             meta_list.append({
                 "number": cols[0].get_text(strip=True),
-                "title":  cols[2].get_text(strip=True),
-                "date":   cols[4].get_text(strip=True),
+                "title": cols[2].get_text(strip=True),
+                "date": cols[4].get_text(strip=True),
                 "status": cols[6].get_text(strip=True),
             })
 
@@ -84,38 +86,50 @@ class RFCClient:
             write_json(META_FILE, meta_list)
         return meta_list
 
-    def download_rfc_text(self, number: Union[int, str]) -> str:
-        """
-        指定した RFC 番号の本文を取得。
-        number は int または文字列で可。
-        """
-        num = int(number)
-        url = self.BASE_TEXT_URL.format(number=num)
-        response = self.session.get(url, timeout=30)
-        response.raise_for_status()
-        return response.text
-
     def fetch_details(
         self,
-        number: Union[int, str],
-        save_meta: bool = False,
+        metadata: Dict[str, Any],
+        save_dir: Path,
+        use_conditional: bool = False
     ) -> Dict[str, Any]:
         """
-        指定RFCのメタデータと本文を結合して返す。
-        存在しない番号なら ValueError。
+        metadata: fetch_metadata が返す辞書 または テスト用に{'rfc_number': '0001'}の形
+        save_dir: 保存先ディレクトリ (data/texts)
+        use_conditional: True のとき ETag/Last-Modified で差分取得
         """
-        num = int(number)
-        meta_list = self.fetch_metadata(save_meta)
-        try:
-            meta = next(
-                m for m in meta_list
-                if self._normalize_number(m["number"]) == num
-            )
-        except StopIteration:
-            raise ValueError(f"RFC {num} が見つかりません")
+        # metadata のキーは "number" or "rfc_number" の両方をサポート
+        num_str = metadata.get("number") or metadata.get("rfc_number")
+        if not num_str:
+            raise KeyError("metadata must contain 'number' or 'rfc_number'")
+        # URL 用に整数化
+        num = self._normalize_number(num_str)
 
-        body = self.download_rfc_text(num)
-        return {**meta, "body": body}
+        # ダウンロード先 URL を組み立て
+        url = self.BASE_TEXT_URL.format(number=num)
+
+        # 保存先ディレクトリがまだなければ作成
+        save_dir.mkdir(parents=True, exist_ok=True)
+        # ファイル名は元の文字列をそのまま使う
+        save_path = save_dir / f"{num_str}.txt"
+
+        # 条件付きヘッダ
+        headers: Dict[str, str] = {}
+        if use_conditional and save_path.exists():
+            last_mod_ts = save_path.stat().st_mtime
+            headers["If-Modified-Since"] = time.strftime(
+                "%a, %d %b %Y %H:%M:%S GMT", time.gmtime(last_mod_ts)
+            )
+
+        # ダウンロード＆リトライ
+        resp = _get_with_retry(url, self.session, headers=headers)
+
+        # 上書き保存 or スキップ
+        if resp.status_code == 200:
+            save_path.write_text(resp.text, encoding="utf-8")
+        # 304 の場合はファイルそのまま
+
+        # 結果返却（本文付きのメタ情報）
+        return {**metadata, "body": save_path.read_text(encoding="utf-8")}
 
 # モジュールレベルでシングルトン
 client = RFCClient()
