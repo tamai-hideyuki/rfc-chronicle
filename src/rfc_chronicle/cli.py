@@ -106,7 +106,24 @@ def search(
 def show(number: int, output: str) -> None:
     """指定RFCの詳細（メタデータ＋本文）を表示"""
     try:
-        details = rfc_client.fetch_details(number)
+        from pathlib import Path
+
+        # 1) metadata.json または fetch_metadata() から一覧を取得
+        meta_list = rfc_client.fetch_metadata(save=False)
+        # 2) 該当RFC番号のメタデータ dict を探す
+        meta = next(
+            m for m in meta_list
+            if rfc_client._normalize_number(m["number"]) == number
+        )
+
+        # 3) 本文を data/texts にダウンロードしつつ詳細取得
+        text_dir = Path("data/texts")
+        text_dir.mkdir(parents=True, exist_ok=True)
+        details = rfc_client.fetch_details(
+            meta,
+            text_dir,
+            use_conditional=False
+        )
     except ValueError as e:
         click.echo(str(e), err=True)
         return
