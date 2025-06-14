@@ -1,5 +1,6 @@
 import sqlite3
 import json
+import re
 from pathlib import Path
 
 # リポジトリ直下の ./data ディレクトリを基準に使用
@@ -10,6 +11,17 @@ TEXT_DIR = BASE_DIR / "texts"
 
 # FTS5 テーブル名
 TABLE_NAME = "rfc_text"
+
+
+def _normalize_num_str(num_str: str) -> str:
+    """
+    メタデータの number フィールドから数字部分を抽出し、ゼロパディングなし文字列で返す
+    例: "RFC 1" -> "1", "0001" -> "0001"
+    """
+    match = re.search(r"(\d+)", num_str)
+    if not match:
+        raise ValueError(f"Invalid RFC number format: {num_str}")
+    return match.group(1)
 
 
 def build_fulltext_db():
@@ -27,29 +39,29 @@ def build_fulltext_db():
     conn.execute(f"""
         CREATE VIRTUAL TABLE IF NOT EXISTS {TABLE_NAME}
         USING fts5(
-            number,      -- RFC 番号
+            number,      -- RFC 番号（数字文字列）
             title,       -- タイトル
             content,     -- 本文全文
             tokenize='porter'  -- Porter ステミング
         );
     """)
 
-    # メタデータ JSON が存在しない場合は自動でフェッチし、ローカルに保存
     # metadata.json が存在しない、または空ファイルの場合は取得・保存
     if not META_PATH.exists() or META_PATH.stat().st_size == 0:
         from rfc_chronicle.fetch_rfc import client as rfc_client
         print(f"{META_PATH} が存在しません。metadata を自動取得します...")
         meta_list = rfc_client.fetch_metadata(save=False)
-        # プロジェクトの data/metadata.json に書き出し
         META_PATH.parent.mkdir(parents=True, exist_ok=True)
         META_PATH.write_text(json.dumps(meta_list, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"metadata saved to {META_PATH}")
-    # メタデータを JSON からロード
+
     # メタデータを JSON からロード
     meta_list = json.loads(META_PATH.read_text(encoding="utf-8"))
     for entry in meta_list:
         # number キーまたは rfc_number キーをサポート
-        num = entry.get("number") or entry.get("rfc_number")
+        raw_num = entry.get("number") or entry.get("rfc_number")
+        # 数字部分を抽出
+        num = _normalize_num_str(raw_num)
         # タイトル内のシングルクォートをエスケープ
         title = entry.get("title", "").replace("'", "''")
         # 対応するテキストファイルパス
@@ -59,9 +71,9 @@ def build_fulltext_db():
             continue
         # 本文を読み込み、シングルクォートをエスケープ
         content = txt_path.read_text(encoding="utf-8").replace("'", "''")
-        # 差分更新: 既存 rowid があればそれを使い、なければ自動生成
+        # 差分更新: 既存エントリがあれば上書き
         conn.execute(f"""
-            INSERT INTO {TABLE_NAME}(rowid, number, title, content)
+            INSERT OR REPLACE INTO {TABLE_NAME}(rowid, number, title, content)
             VALUES (
                 COALESCE((SELECT rowid FROM {TABLE_NAME} WHERE number = '{num}'), NULL),
                 '{num}',
@@ -69,6 +81,7 @@ def build_fulltext_db():
                 '{content}'
             )
         """)
+
     # コミットして接続を閉じる
     conn.commit()
     conn.close()

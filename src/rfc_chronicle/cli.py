@@ -1,12 +1,15 @@
 import json
 import click
+import sqlite3
 from pathlib import Path
 from typing import Optional, Set, List, Dict, Any
 
 from rfc_chronicle.fetch_rfc import client as rfc_client
 from rfc_chronicle.formatters import format_json, format_csv, format_md
-from rfc_chronicle.utils import META_FILE
+
 from rfc_chronicle.index_fulltext import build_fulltext_db, DB_PATH
+
+DATA_META = Path.cwd() / "data" / "metadata.json"
 
 # テスト用にモック可能なピン保存先（Noneなら無効化）
 PINS_FILE: Optional[Path] = None
@@ -56,24 +59,27 @@ def search(
     keyword:   Optional[str],
 ) -> None:
     """キャッシュ済みメタデータを絞り込み検索"""
-    if not META_FILE.exists():
-        click.echo("No metadata cache. まずは `fetch` を実行してください。", err=True)
+    # プロジェクト直下の data/metadata.json を参照
+    data_path = Path.cwd() / "data" / "metadata.json"
+    if not data_path.exists():
+        click.echo("No metadata cache. まずは `fetch --save` を実行してください。", err=True)
         return
 
-    data: List[Dict[str, Any]] = json.loads(META_FILE.read_text(encoding="utf-8"))
-
-    def _matches(item: Dict[str, Any]) -> bool:
-        year = int(item["date"][:4])
-        if from_date and year < from_date:
-            return False
-        if to_date   and year > to_date:
-            return False
+    data: List[Dict[str, Any]] = json.loads(data_path.read_text(encoding="utf-8"))
+    # 以降、フィルタ処理…
+    results = []
+    for item in data:
+        year = int(item["date"][:4]) if item["date"] else None
+        if from_date and (not year or year < from_date):
+            continue
+        if to_date   and (not year or year > to_date):
+            continue
         if keyword and keyword.lower() not in item["title"].lower():
-            return False
-        return True
+            continue
+        results.append(item)
 
-    results = [item for item in data if _matches(item)]
     click.echo(json.dumps(results, ensure_ascii=False, indent=2))
+
 
 @cli.command()
 @click.argument('number', type=int)
@@ -132,6 +138,31 @@ def index_fulltext():
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     build_fulltext_db()
     click.echo("Done.")
+
+
+@cli.command("fulltext")
+@click.argument("query", nargs=-1)
+@click.option("--limit", "-n", default=20, help="返す件数")
+def fulltext(query, limit):
+    """
+    FTS5 を使った全文検索:
+    data/fulltext.db の rfc_text テーブルを検索し
+    RFC番号・タイトル・スニペットを表示します
+    """
+    q = " ".join(query)
+    db_path = Path.cwd() / "data" / "fulltext.db"
+    conn = sqlite3.connect(db_path)
+    sql = f"""
+      SELECT number, title,
+             snippet(rfc_text, '[…]', '[…]', '…', 10, 3) AS excerpt
+      FROM rfc_text
+      WHERE rfc_text MATCH ?
+      LIMIT {limit};
+    """
+    for num, title, excerpt in conn.execute(sql, (q,)):
+        click.echo(f"RFC{num}\t{title}")
+        click.echo(f"  …{excerpt}…\n")
+    conn.close()
 
 
 if __name__ == "__main__":

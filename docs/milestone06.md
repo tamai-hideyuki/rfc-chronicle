@@ -52,6 +52,23 @@ poetry run rfc-chronicle index-fulltext
 - オプションで件数指定（`--limit`）を追加
 - CIテスト：DB再構築後も最新内容を返すことを検証
 
+<details>
+<summary>メモ</summary>
+
+- メタデータを取得して ./data/metadata.json に保存  
+poetry run rfc-chronicle fetch --save
+  
+
+- RFC1〜N をまとめてダウンロード（既存上書き）  
+poetry run rfc-chronicle semfetch 1 10
+  
+
+- 全文検索DBを構築  
+poetry run rfc-chronicle index-fulltext
+
+
+</details>
+
 ---
 
 ## ドキュメント単位 Embedding のバッチ処理を実装する

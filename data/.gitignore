@@ -3,3 +3,4 @@ texts/
 fulltext.db
 fulltext.db-shm
 fulltext.db-wal
+metadata.json
