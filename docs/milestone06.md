@@ -69,19 +69,19 @@ poetry run rfc-chronicle index-fulltext
 </details>
 
 ### 運用方針：
-- まず一括 DL
-  - ./data/texts/0001.txt～./data/texts/NNNN.txt までをまとめて取得
-    - 新しい RFC が増えたと感じたら、同じスクリプトを再実行すれば、存在しない番号だけスキップ
-
+- まず一括 DL: 
+  - `./scripts/download_all.sh`
+    - これで ./data/texts/0001.txt～./data/texts/NNNN.txt までをまとめて取得
+      - 新しい RFC が増えたら、同じスクリプトを再実行
 
 - ヘッダ＋本文情報を含むメタデータ生成
   - ダウンロードが完了したら、
-    - poetry run rfc-chronicle fetch --save
+    - `poetry run rfc-chronicle fetch --save`
     - これの実行で./data/metadata.json にヘッダ（Author, Date, …）と本文抜粋をマージした「詳細メタデータ」を書き出す
 
-- 最後に全文索引構築
-  - poetry run rfc-chronicle index-fulltext
-  - これで取得したすべてのドキュメントがインデックスできる。
+- 全文検索 DB の再構築
+  - `poetry run rfc-chronicle index-fulltext`
+    - ./data/fulltext.db に取得したすべてのドキュメントがインデックスされる
 
 
 
@@ -100,6 +100,13 @@ poetry run rfc-chronicle index-fulltext
 - RFC番号とインデックスのマップを作成
 - メモリ管理／大規模データ対応の確認
 - （オプション）差分追加対応：「既存配列読み込み → 新規分を concat → 上書き保存」
+
+**これが実装できるとできること**
+
+- 以下のような従来の全文キーワード検索を超えた知的探索・分析が可能になります。
+  - 「意味的に近いRFCを探す」
+  - 「ドキュメント間の類似度を定量化する」
+  - 「大量のRFCをトピック別に分類・可視化する」
 
 ---
 

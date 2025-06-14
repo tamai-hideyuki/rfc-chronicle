@@ -3,7 +3,7 @@ import click
 import sqlite3
 from pathlib import Path
 from typing import Optional, Set, List, Dict, Any
-
+from requests.exceptions import HTTPError
 from rfc_chronicle.fetch_rfc import client as rfc_client
 from rfc_chronicle.formatters import format_json, format_csv, format_md
 
@@ -31,28 +31,42 @@ def cli() -> None:
 @cli.command()
 @click.option('-s', '--save', is_flag=True, help="ローカルにメタデータを保存")
 def fetch(save: bool) -> None:
-    """全 RFC のメタデータを取得"""
+    """全 RFC のメタデータを取得・（オプションで）本文ヘッダ情報とマージして保存"""
     try:
-       meta = rfc_client.fetch_metadata(save=False)
+        # 1) メタデータ一覧だけ取得
+        meta = rfc_client.fetch_metadata(save=False)
         click.echo(f"Fetched {len(meta)} records.")
+
         if save:
-           # fetch_details でヘッダもマージした上で保存
-           data_path = Path.cwd() / "data" / "metadata.json"
-           data_path.parent.mkdir(parents=True, exist_ok=True)
-           enriched = []
-           for m in meta:
-               # 本文とヘッダを取得して m にマージ
-               detail = rfc_client.fetch_details(m, Path("data/texts"), use_conditional=False)
-               enriched.append(detail)
-           data_path.write_text(
-               json.dumps(enriched, ensure_ascii=False, indent=2),
-               encoding="utf-8"
-           )
-           click.echo(f"Saved enriched metadata to {data_path}")
+            # 2) テキストとヘッダを取得しつつ JSON を組み立て
+            out_dir = Path("data/texts")
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            enriched: list[dict] = []
+            for m in meta:
+                num = m.get("number") or m.get("rfc_number")
+                try:
+                    detail = rfc_client.fetch_details(m, out_dir, use_conditional=False)
+                except HTTPError as e:
+                    # 404 のみスキップ
+                    if e.response.status_code == 404:
+                        click.echo(f"RFC{num}: Not Found, skipped")
+                        continue
+                    # それ以外は止める
+                    raise
+                enriched.append(detail)
+
+            # 3) ファイルに書き出し
+            data_path = Path.cwd() / "data" / "metadata.json"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                json.dumps(enriched, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+            click.echo(f"Saved enriched metadata to {data_path}")
+
     except Exception as e:
         click.echo(f"Error fetching metadata: {e}", err=True)
-
-
 
 @cli.command()
 @click.option('--from-date', type=int, help="発行年 FROM (YYYY)")
