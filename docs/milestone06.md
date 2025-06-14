@@ -29,6 +29,15 @@
 - `metadata.json` と `data/texts/*.txt` を一括取り込み
 - スクリプトを Makefile や CLI サブコマンド化
 
+<details>
+<summary>メモ</summary>
+
+poetry run rfc-chronicle fetch --save
+
+poetry run rfc-chronicle index-fulltext
+
+</details>
+
 ---
 
 ## CLI コマンド fulltext を追加する

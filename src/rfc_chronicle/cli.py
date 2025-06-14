@@ -6,6 +6,7 @@ from typing import Optional, Set, List, Dict, Any
 from rfc_chronicle.fetch_rfc import client as rfc_client
 from rfc_chronicle.formatters import format_json, format_csv, format_md
 from rfc_chronicle.utils import META_FILE
+from rfc_chronicle.index_fulltext import build_fulltext_db, DB_PATH
 
 # テスト用にモック可能なピン保存先（Noneなら無効化）
 PINS_FILE: Optional[Path] = None
@@ -29,12 +30,21 @@ def cli() -> None:
 def fetch(save: bool) -> None:
     """全 RFC のメタデータを取得"""
     try:
-        meta = rfc_client.fetch_metadata(save)
+        # キャッシュは使わず常に最新を取得
+        meta = rfc_client.fetch_metadata(save=False)
         click.echo(f"Fetched {len(meta)} records.")
         if save:
-            click.echo(f"Saved to {META_FILE}")
+            # プロジェクト直下の data/metadata.json に書き出す
+            data_path = Path.cwd() / "data" / "metadata.json"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+            click.echo(f"Saved metadata to {data_path}")
     except Exception as e:
         click.echo(f"Error fetching metadata: {e}", err=True)
+
 
 @cli.command()
 @click.option('--from-date', type=int, help="発行年 FROM (YYYY)")
@@ -113,6 +123,16 @@ def list_pins() -> None:
     """現在ピンしているRFC一覧を表示"""
     pins = sorted(_load_pins())
     click.echo("\n".join(pins) if pins else "No pinned RFCs.")
+
+
+@cli.command("index-fulltext")
+def index_fulltext():
+    """SQLite FTS5 全文検索 DB を再構築します"""
+    click.echo(f"Rebuilding fulltext DB at {DB_PATH}…")
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    build_fulltext_db()
+    click.echo("Done.")
+
 
 if __name__ == "__main__":
     cli()
