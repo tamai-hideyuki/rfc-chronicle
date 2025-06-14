@@ -1,3 +1,5 @@
+# 【M6-1】:
+
 ## RFC本文のダウンロード機能を実装する
 
 **概要**
@@ -86,6 +88,8 @@ poetry run rfc-chronicle index-fulltext
 
 
 ---
+
+# 【M6-2】:
 
 ## ドキュメント単位 Embedding のバッチ処理を実装する
 

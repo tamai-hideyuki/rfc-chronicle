@@ -141,52 +141,74 @@ poetry run rfc-chronicle pins       # ピン一覧
 poetry run rfc-chronicle fetch
 # → RFC-Editor から最新のメタデータ (number, title, date, status) を取得し、
 #    件数をコンソールに出力します。
-
+# ===========================================================================================
 # 2. 詳細を含めて metadata.json に保存
 poetry run rfc-chronicle fetch --save
 # → ① 全メタデータ取得
 #    ② data/texts/*.txt に本文をダウンロード
 #    ③ 本文ヘッダ（Author, Date, Title, ほか Key:Value）をパースしてメタデータにマージ
 #    ④ ./data/metadata.json に書き出します。
-
+# ===========================================================================================
 # 3. 全文検索インデックス(FTS5)を再構築
 poetry run rfc-chronicle index-fulltext
 # → ./data/metadata.json と data/texts/*.txt を読み込み、
 #    SQLite FTS5 仮想テーブルを作り直します。
-
+# ===========================================================================================
 # 4. キーワード全文検索
 poetry run rfc-chronicle fulltext <query> [--limit N]
 # → FTS5 インデックスを検索し、
 #    マッチした RFC 番号・タイトル・スニペットを上位 N 件表示します。
 #    N を省略するとデフォルト20件。
-
+#
+#  使用例：
+#
+#  例1: “OAuth” を含むRFCをデフォルト20件表示: poetry run rfc-chronicle fulltext OAuth
+#
+#  例2: “security transport” を含むRFCを上位5件だけ取得: poetry run rfc-chronicle fulltext security transport --limit 5
+#
+#  例3: 複数ワード (“network routing”) を AND 検索、上位3件表示: poetry run rfc-chronicle fulltext network routing --limit 3
+#
+# ===========================================================================================
 # 5. RFC詳細表示
 poetry run rfc-chronicle show <number> [--output md|json|csv]
 # → 指定RFC番号のメタデータ+本文を出力。
 #    --output md   : Markdown 形式
 #    --output json : JSON 形式
 #    --output csv  : CSV 形式
-
+# ===========================================================================================
 # 6. メタデータ絞り込み検索
 poetry run rfc-chronicle search [--from-date YYYY] [--to-date YYYY] [--keyword KEYWORD]
 # → キャッシュ済み metadata.json を対象に、
 #    発行年(from/to) やタイトルのキーワードでフィルタした一覧を JSON で返します。
-
+#
+#  使用例：
+#
+#  1970年以降に発行された RFC を調べる: poetry run rfc-chronicle search --from-date 1970
+#
+#  1980年から1990年の間に発行された RFC: poetry run rfc-chronicle search --from-date 1980 --to-date 1990
+#
+#  タイトルに “HTTP” が含まれる RFC: poetry run rfc-chronicle search --keyword HTTP
+#
+#  1990年以降かつタイトルに “Security” を含む RFC: poetry run rfc-chronicle search --from-date 1990 --keyword Security
+#
+#
+# ===========================================================================================
 # 7. RFCをピン留め
 poetry run rfc-chronicle pin <number>
 # → よく使うRFC番号をローカルに “ピン” して登録します。
-
+# ===========================================================================================
 # 8. ピンを解除
 poetry run rfc-chronicle unpin <number>
 # → 登録済みのピンを削除します。
-
+# ===========================================================================================
 # 9. ピン一覧表示
 poetry run rfc-chronicle pins
 # → 現在ピン留め中のRFC番号を一覧表示します。
-
+# ===========================================================================================
 # 10. セマンティック検索（未実装）
 # poetry run rfc-chronicle semsearch <query>
 # → 将来的にベクトル検索（sentence-transformers + FAISS）による
 #    意味的に近いRFCの検索を行います。
+# ===========================================================================================
 ```
 
