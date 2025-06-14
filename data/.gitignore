@@ -1,0 +1,6 @@
+texts/
+.rfc_data/
+fulltext.db
+fulltext.db-shm
+fulltext.db-wal
+metadata.json

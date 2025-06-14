@@ -3,207 +3,212 @@
 ![PyPI version](https://img.shields.io/pypi/v/rfc-chronicle.svg)
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)
 ![Poetry](https://img.shields.io/badge/poetry-1.5%2B-blue.svg)
-![faiss](https://img.shields.io/badge/faiss-enabled-brightgreen.svg)
 ![Click](https://img.shields.io/badge/click-8.1%2B-blue.svg)
+![FAISS](https://img.shields.io/badge/faiss-enabled-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
 
-## 概要：
-`rfc-chronicle` は、[RFCエディター](https://www.rfc-editor.org/) に公開されているRFC（Request for Comments）情報をローカルに取り込み、検索・閲覧・エクスポートできるCLIツールです。
+## 概要
 
-- RFCのメタデータ取得
-- 埋め込み検索（FAISSベース）による全文検索
-- レコードのピン留め・管理
-- JSON / CSV / Markdown形式でのエクスポート
+`rfc-chronicle` は [RFC-Editor](https://www.rfc-editor.org/) から
+RFC（Request for Comments）のメタデータや本文をローカルに取り込み、
+キーワード全文検索・将来のベクトル検索・各種エクスポートを
+CLI から手軽に行えるツールです。
 
-## 技術スタック：
-
-![Python](https://img.shields.io/badge/Python-3.13%2B-blue.svg)
-![Poetry](https://img.shields.io/badge/Poetry-1.5%2B-blue.svg)
-![Click](https://img.shields.io/badge/Click-8.1%2B-purple.svg)
-![Requests](https://img.shields.io/badge/Requests-2.28%2B-green.svg)
-![BeautifulSoup](https://img.shields.io/badge/BeautifulSoup-4.11%2B-yellow.svg)
-![FAISS](https://img.shields.io/badge/FAISS-1.7%2B-brightgreen.svg)
-![Markdown](https://img.shields.io/badge/Output-Markdown-lightgrey.svg)
-![CSV](https://img.shields.io/badge/Output-CSV-orange.svg)
-![JSON](https://img.shields.io/badge/Output-JSON-blueviolet.svg)
+---
 
 ## インストール
 
 ```bash
-# リポジトリをクローン
 git clone https://github.com/tamai-hideyuki/rfc-chronicle.git
+
 cd rfc-chronicle
 
-# Poetryで依存関係をインストール
 poetry install
-````
----
-
-## 使い方:
-
-```bash
-## 現在使えるコマンド一覧
-
-```bash
-# 全 RFC のメタデータを取得し件数を出力
-$ poetry run rfc-chronicle fetch
-
-# JSON 形式で RFC 791 の詳細を出力
-$ poetry run rfc-chronicle show 791 --output json
-
-# CSV テーブル形式で RFC 26 の詳細を出力
-$ poetry run rfc-chronicle show 26 --output csv
-
-# デフォルト（Markdown）で RFC 10 の詳細を出力
-$ poetry run rfc-chronicle show 10
-
 ```
-
-### RFCメタデータの取得
-
-```bash
-poetry run rfc show 1-9000
-```
-
-### 埋め込み検索
-
-```bash
-poetry run rfc search "検索キーワード"
-```
-
-### 詳細表示
-
-```bash
-poetry run rfc show <RFC番号> [--output json|csv|md]
-```
-
-### ピン留め管理
-
-```bash
-poetry run rfc pin add <RFC番号>
-poetry run rfc pin list
-poetry run rfc pin remove <RFC番号>
-```
-
-### エクスポート
-
-```bash
-poetry run rfc export --output md > rfc_list.md
-```
----
-
-
-## コントリビュート：
-
-1. Issueを立てる
-2. ブランチを作成 (`feat/`, `fix/` など)
-3. PRを送付し、CIが通ったらマージを依頼
 
 ---
 
-## 構成案(フルパッケージのURLからのブラウザ表示までのシーケンス図)
+## 機能一覧
 
-```mermaid
-sequenceDiagram
-    participant ブラウザ
-    participant DNS
-    participant CDN as CloudFront(CDN)
-    participant S3 as S3バケット
-    participant レンダラ as ブラウザレンダラ
+1. **メタデータ取得**
 
-    ブラウザ->>DNS: full-package.example.comのAレコードを照会
-    DNS-->>ブラウザ: CloudFrontのエンドポイントを返却
-    ブラウザ->>CDN: GET /index.html
-    CDN->>S3: GET /index.html (オリジンフェッチ)
-    S3-->>CDN: 200 OK + HTMLドキュメント
-    CDN-->>ブラウザ: 200 OK + HTMLドキュメント
+- RFC 番号・タイトル・日付・ステータスを一覧取得
+- 本文ヘッダ（Author, Date, Title など）を細かくパースしてマージ
 
-    Note over ブラウザ,レンダラ: HTMLを受信後、リソースの解析開始
+2. **本文ダウンロード**
 
-    ブラウザ->>CDN: GET /styles.css
-    CDN->>S3: GET /styles.css
-    S3-->>CDN: 200 OK + CSS
-    CDN-->>ブラウザ: 200 OK + CSS
+- 複数RFCを一括／範囲指定で取得
+- 存在しない番号（404）は自動スキップ
 
-    ブラウザ->>CDN: GET /app.js
-    CDN->>S3: GET /app.js
-    S3-->>CDN: 200 OK + JavaScript
-    CDN-->>ブラウザ: 200 OK + JavaScript
+3. **全文検索（FTS5）**
 
-    ブラウザ->>レンダラ: HTML/CSS/JSを渡し、レンダリング開始
-    レンダラ-->>ブラウザ: ページ描画完了
+- SQLite FTS5 で高速キーワード検索
+- スニペット付きでヒット箇所を表示
+
+4. **意味的検索（ベクトル検索・予定）**
+
+- Sentence‐Transformers + FAISS によるセマンティック検索
+- 類似RFCレコメンド
+
+5. **全文検索DB再構築**
+
+- 差分更新 or 完全再構築
+- Porterステミング対応
+
+6. **詳細表示**
+
+- JSON / CSV / Markdown 形式でRFC詳細を出力
+
+7. **ピン機能**
+
+- よく使うRFCをピン留め・解除・一覧表示
+
+---
+
+## 使い方
+
+### 1. メタデータ取得
+
+```bash
+# 一覧を取得（件数のみ表示）
+poetry run rfc-chronicle fetch
+
+# ヘッダ付き詳細もマージして ./data/metadata.json に保存
+poetry run rfc-chronicle fetch --save
 ```
 
-## フルパッケージ + OIDC準拠のOAuthを組み込んだ場合のシーケン図
+### 2. 本文一括ダウンロード
 
-```mermaid
-sequenceDiagram
-    participant ブラウザ
-    participant DNS
-    participant CDN as CloudFront(CDN)
-    participant S3 as S3バケット
-    participant OIDC as OIDCプロバイダ
-    participant TokenEP as トークンエンドポイント
-    participant API as バックエンドAPI
-    participant レンダラ as ブラウザレンダラ
-
-    %% 静的資産の取得
-    ブラウザ->>DNS: full-package.example.com の A レコードを照会
-    DNS-->>ブラウザ: CloudFront エンドポイントを返却
-    ブラウザ->>CDN: GET /index.html
-    CDN->>S3: GET /index.html (オリジンフェッチ)
-    S3-->>CDN: 200 OK + HTML
-    CDN-->>ブラウザ: 200 OK + HTML
-
-    Note over ブラウザ,レンダラ: HTML 受信後、JS が認証状態をチェック
-
-    alt 未認証時
-        %% 認可コードフロー開始
-        ブラウザ->>OIDC: GET /authorize?response_type=code&client_id=…&redirect_uri=…
-        OIDC-->>ブラウザ: 302 リダイレクト (ログインフォーム)
-        ブラウザ->>OIDC: GET /login
-        ブラウザ->>OIDC: POST /login (ユーザー認証)
-        OIDC-->>ブラウザ: 302 リダイレクト (redirect_uri?code=…)
-        ブラウザ->>CDN: GET /index.html?code=…
-        CDN->>S3: GET /index.html
-        S3-->>CDN: 200 OK + HTML
-        CDN-->>ブラウザ: 200 OK + HTML
-
-        %% トークン取得
-        ブラウザ->>TokenEP: POST /token { grant_type=authorization_code, code, client_id, redirect_uri }
-        TokenEP-->>ブラウザ: 200 OK { id_token, access_token, refresh_token }
-        ブラウザ->>ブラウザ: localStorage にトークンを保存
-    end
-
-    %% 保護されたリソースの取得
-    ブラウザ->>API: GET /protected-data (Authorization: Bearer access_token)
-    API-->>ブラウザ: 200 OK + JSON データ
-
-    %% 最終レンダリング
-    ブラウザ->>レンダラ: HTML/CSS/JS + データ を渡して描画
-    レンダラ-->>ブラウザ: ページ描画完了
+```bash
+# scripts/download_all.sh を使って ./data/texts/*.txt を一括取得
+./scripts/download_all.sh
 ```
 
-## フルパッケージ + ログインしてるユーザーID取得のシーケンス図
+### 3. 全文検索インデックス構築
 
-```mermaid
-sequenceDiagram
-    participant ブラウザ
-    participant UserInfoEP as OIDCプロバイダ\nUserInfoエンドポイント
-    participant API as バックエンドAPI
-    participant レンダラ as ブラウザレンダラ
-
-    Note over ブラウザ: 認可コードフロー完了後、トークンを保持
-
-    ブラウザ->>UserInfoEP: GET /userinfo\n(Authorization: Bearer access_token)
-    UserInfoEP-->>ブラウザ: 200 OK { "sub": "ユーザーID", "name": "...", ... }
-    ブラウザ->>ブラウザ: ローカルでユーザーID抽出・格納
-
-    Note over ブラウザ: ログイン中ユーザーIDを取得
-
-    ブラウザ->>API: GET /protected-data\n(Authorization: Bearer access_token)
-    API-->>ブラウザ: 200 OK + JSONデータ
-
-    ブラウザ->>レンダラ: HTML/CSS/JS + データ + ユーザーID を渡して描画
-    レンダラ-->>ブラウザ: ページ描画完了
+```bash
+poetry run rfc-chronicle index-fulltext
 ```
+
+### 4. キーワード全文検索
+
+```bash
+# 本文内の “OAuth” を含むRFCを上位10件表示
+poetry run rfc-chronicle fulltext OAuth --limit 10
+```
+
+### 5. 意味的検索（将来）
+
+```bash
+# セマンティック検索（実装後）
+poetry run rfc-chronicle semsearch "セキュリティ トランスポート"
+```
+
+### 6. RFC詳細表示
+
+```bash
+# Markdown形式でRFC1を表示
+poetry run rfc-chronicle show 1 --output md
+
+# JSON形式でRFC791を表示
+poetry run rfc-chronicle show 791 --output json
+
+# CSV形式でRFC26を表示
+poetry run rfc-chronicle show 26 --output csv
+```
+
+### 7. メタデータ絞り込み検索
+
+```bash
+# タイトルに "Network" を含むRFCをリスト
+poetry run rfc-chronicle search --keyword Network
+```
+
+### 8. ピン機能
+
+```bash
+poetry run rfc-chronicle pin 1      # ピン留め
+poetry run rfc-chronicle unpin 1    # ピン解除
+poetry run rfc-chronicle pins       # ピン一覧
+```
+
+---
+
+### 現在のコマンド一覧
+
+```bash
+# 1. メタデータ一覧だけ取得（件数を表示）
+poetry run rfc-chronicle fetch
+# → RFC-Editor から最新のメタデータ (number, title, date, status) を取得し、
+#    件数をコンソールに出力します。
+# ===========================================================================================
+# 2. 詳細を含めて metadata.json に保存
+poetry run rfc-chronicle fetch --save
+# → ① 全メタデータ取得
+#    ② data/texts/*.txt に本文をダウンロード
+#    ③ 本文ヘッダ（Author, Date, Title, ほか Key:Value）をパースしてメタデータにマージ
+#    ④ ./data/metadata.json に書き出します。
+# ===========================================================================================
+# 3. 全文検索インデックス(FTS5)を再構築
+poetry run rfc-chronicle index-fulltext
+# → ./data/metadata.json と data/texts/*.txt を読み込み、
+#    SQLite FTS5 仮想テーブルを作り直します。
+# ===========================================================================================
+# 4. キーワード全文検索
+poetry run rfc-chronicle fulltext <query> [--limit N]
+# → FTS5 インデックスを検索し、
+#    マッチした RFC 番号・タイトル・スニペットを上位 N 件表示します。
+#    N を省略するとデフォルト20件。
+#
+#  使用例：
+#
+#  例1: “OAuth” を含むRFCをデフォルト20件表示: poetry run rfc-chronicle fulltext OAuth
+#
+#  例2: “security transport” を含むRFCを上位5件だけ取得: poetry run rfc-chronicle fulltext security transport --limit 5
+#
+#  例3: 複数ワード (“network routing”) を AND 検索、上位3件表示: poetry run rfc-chronicle fulltext network routing --limit 3
+#
+# ===========================================================================================
+# 5. RFC詳細表示
+poetry run rfc-chronicle show <number> [--output md|json|csv]
+# → 指定RFC番号のメタデータ+本文を出力。
+#    --output md   : Markdown 形式
+#    --output json : JSON 形式
+#    --output csv  : CSV 形式
+# ===========================================================================================
+# 6. メタデータ絞り込み検索
+poetry run rfc-chronicle search [--from-date YYYY] [--to-date YYYY] [--keyword KEYWORD]
+# → キャッシュ済み metadata.json を対象に、
+#    発行年(from/to) やタイトルのキーワードでフィルタした一覧を JSON で返します。
+#
+#  使用例：
+#
+#  1970年以降に発行された RFC を調べる: poetry run rfc-chronicle search --from-date 1970
+#
+#  1980年から1990年の間に発行された RFC: poetry run rfc-chronicle search --from-date 1980 --to-date 1990
+#
+#  タイトルに “HTTP” が含まれる RFC: poetry run rfc-chronicle search --keyword HTTP
+#
+#  1990年以降かつタイトルに “Security” を含む RFC: poetry run rfc-chronicle search --from-date 1990 --keyword Security
+#
+#
+# ===========================================================================================
+# 7. RFCをピン留め
+poetry run rfc-chronicle pin <number>
+# → よく使うRFC番号をローカルに “ピン” して登録します。
+# ===========================================================================================
+# 8. ピンを解除
+poetry run rfc-chronicle unpin <number>
+# → 登録済みのピンを削除します。
+# ===========================================================================================
+# 9. ピン一覧表示
+poetry run rfc-chronicle pins
+# → 現在ピン留め中のRFC番号を一覧表示します。
+# ===========================================================================================
+# 10. セマンティック検索（未実装）
+# poetry run rfc-chronicle semsearch <query>
+# → 将来的にベクトル検索（sentence-transformers + FAISS）による
+#    意味的に近いRFCの検索を行います。
+# ===========================================================================================
+```
+
