@@ -33,20 +33,25 @@ def cli() -> None:
 def fetch(save: bool) -> None:
     """全 RFC のメタデータを取得"""
     try:
-        # キャッシュは使わず常に最新を取得
-        meta = rfc_client.fetch_metadata(save=False)
+       meta = rfc_client.fetch_metadata(save=False)
         click.echo(f"Fetched {len(meta)} records.")
         if save:
-            # プロジェクト直下の data/metadata.json に書き出す
-            data_path = Path.cwd() / "data" / "metadata.json"
-            data_path.parent.mkdir(parents=True, exist_ok=True)
-            data_path.write_text(
-                json.dumps(meta, ensure_ascii=False, indent=2),
-                encoding="utf-8"
-            )
-            click.echo(f"Saved metadata to {data_path}")
+           # fetch_details でヘッダもマージした上で保存
+           data_path = Path.cwd() / "data" / "metadata.json"
+           data_path.parent.mkdir(parents=True, exist_ok=True)
+           enriched = []
+           for m in meta:
+               # 本文とヘッダを取得して m にマージ
+               detail = rfc_client.fetch_details(m, Path("data/texts"), use_conditional=False)
+               enriched.append(detail)
+           data_path.write_text(
+               json.dumps(enriched, ensure_ascii=False, indent=2),
+               encoding="utf-8"
+           )
+           click.echo(f"Saved enriched metadata to {data_path}")
     except Exception as e:
         click.echo(f"Error fetching metadata: {e}", err=True)
+
 
 
 @cli.command()

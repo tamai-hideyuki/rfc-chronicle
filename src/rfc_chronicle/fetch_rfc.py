@@ -100,49 +100,48 @@ class RFCClient:
 
 
     def fetch_details(
-        self,
-        metadata: Union[int, str, Dict[str, Any]],
-        save_dir: Path,
-        use_conditional: bool = False
-    ) -> Dict[str, Any]:
-        """
-        指定RFCの本文をダウンロードして保存し、ヘッダをパースして
-        metadata にマージした上で本文を返す
-        """
-        # --- metadata を dict 化 ---
-        if not isinstance(metadata, dict):
-            metadata = {"number": str(metadata)}
+            self,
+            metadata: Union[int, str, Dict[str, Any]],
+            save_dir: Path,
+            use_conditional: bool = False
+        ) -> Dict[str, Any]:
+            """
+            指定RFCの本文をダウンロード・保存し、
+            ヘッダをパースしてmetadataにマージしたdictを返す。
+            """
+            # --- 1. metadata を dict に統一 ---
+            if not isinstance(metadata, dict):
+                metadata = {"number": str(metadata)}
 
-        # --- ダウンロード用 URL と保存先準備 ---
-        num_str = metadata.get("number") or metadata.get("rfc_number")
-        num = self._normalize_number(num_str)
-        url = self.BASE_TEXT_URL.format(number=num)
+            raw_num = metadata.get("number") or metadata.get("rfc_number")
+            num = self._normalize_number(raw_num)
+            target = save_dir / f"{num}.txt"
+            save_dir.mkdir(parents=True, exist_ok=True)
 
-        save_dir.mkdir(parents=True, exist_ok=True)
-        file_path = save_dir / f"{num}.txt"
+            # --- 2. 条件付きダウンロードヘッダ ---
+            headers: Dict[str, str] = {}
+            if use_conditional and target.exists():
+                ts = target.stat().st_mtime
+                headers["If-Modified-Since"] = time.strftime(
+                    "%a, %d %b %Y %H:%M:%S GMT",
+                    time.gmtime(ts)
+                )
 
-        # --- 条件付きリクエストヘッダ（省略）---
-        headers: Dict[str, str] = {}
-        if use_conditional and file_path.exists():
-            last_mod = file_path.stat().st_mtime
-            headers["If-Modified-Since"] = time.strftime(
-                "%a, %d %b %Y %H:%M:%S GMT",
-                time.gmtime(last_mod)
-            )
+            # --- 3. ダウンロード & ファイル保存 ---
+            url = self.BASE_TEXT_URL.format(number=num)
+            resp: Response = _get_with_retry(url, self.session, headers=headers)
+            if resp.status_code == 200:
+                target.write_text(resp.text, encoding="utf-8")
 
-        # --- ダウンロード＆保存 ---
-        resp = _get_with_retry(url, self.session, headers=headers)
-        if resp.status_code == 200:
-            file_path.write_text(resp.text, encoding="utf-8")
+            # --- 4. テキストのクリーン & ヘッダパース ---
+            raw = target.read_text(encoding="utf-8")
+            cleaned = clean_rfc_text(raw)
+            header_dict, body = parse_rfc_header(cleaned)
 
-        # --- テキスト読み込み＋クリーン＆ヘッダパース ---
-        raw = file_path.read_text(encoding="utf-8")
-        cleaned = clean_rfc_text(raw)
-        header_dict, body = parse_rfc_header(cleaned)
-
-        # --- パース結果を metadata にマージ & 返却 ---
-        metadata.update(header_dict)
-        return {**metadata, "body": body}
+            # --- 5. metadata 更新 & 返却 ---
+            metadata.update(header_dict)
+            metadata["body"] = body
+            return metadata
 
 
 # シングルトンインスタンス

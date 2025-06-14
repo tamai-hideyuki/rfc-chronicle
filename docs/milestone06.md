@@ -66,8 +66,24 @@ poetry run rfc-chronicle semfetch 1 10
 - 全文検索DBを構築  
 poetry run rfc-chronicle index-fulltext
 
-
 </details>
+
+### 運用方針：
+- まず一括 DL
+  - ./data/texts/0001.txt～./data/texts/NNNN.txt までをまとめて取得
+    - 新しい RFC が増えたと感じたら、同じスクリプトを再実行すれば、存在しない番号だけスキップ
+
+
+- ヘッダ＋本文情報を含むメタデータ生成
+  - ダウンロードが完了したら、
+    - poetry run rfc-chronicle fetch --save
+    - これの実行で./data/metadata.json にヘッダ（Author, Date, …）と本文抜粋をマージした「詳細メタデータ」を書き出す
+
+- 最後に全文索引構築
+  - poetry run rfc-chronicle index-fulltext
+  - これで取得したすべてのドキュメントがインデックスできる。
+
+
 
 ---
 
