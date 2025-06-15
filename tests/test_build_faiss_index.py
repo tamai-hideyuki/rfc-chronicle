@@ -20,7 +20,6 @@ def temp_data_dir(tmp_path, monkeypatch):
 def get_script_path():
     return Path(__file__).parent.parent / "scripts" / "build_faiss_index.py"
 
-
 def test_fresh_build_creates_index_file(temp_data_dir):
     index_path = temp_data_dir / "faiss_index.bin"
     script = get_script_path()
@@ -32,7 +31,6 @@ def test_fresh_build_creates_index_file(temp_data_dir):
     idx = faiss.read_index(str(index_path))
     assert isinstance(idx, faiss.IndexFlatL2)
     assert idx.ntotal == 10, f"期待件数 10, 実際 {idx.ntotal}"
-
 
 def test_update_mode_increases_count(temp_data_dir):
     index_path = temp_data_dir / "faiss_index.bin"
@@ -48,7 +46,6 @@ def test_update_mode_increases_count(temp_data_dir):
     idx = faiss.read_index(str(index_path))
     assert idx.ntotal == 15, f"期待件数 15, 実際 {idx.ntotal}"
 
-
 def test_ivf_build_creates_ivf_index(temp_data_dir):
     index_path = temp_data_dir / "faiss_index.bin"
     script = get_script_path()
@@ -62,7 +59,6 @@ def test_ivf_build_creates_ivf_index(temp_data_dir):
     assert idx.ntotal == 10, f"期待件数 10, 実際 {idx.ntotal}"
     # IVF インデックスは train 済みであること
     assert idx.is_trained, "IVF インデックスが train されていません"
-
 
 def test_hnsw_build_creates_hnsw_index(temp_data_dir):
     index_path = temp_data_dir / "faiss_index.bin"
