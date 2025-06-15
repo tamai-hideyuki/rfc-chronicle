@@ -7,9 +7,9 @@ import numpy as np
 # --- デフォルト設定 ---
 VECTORS_PATH = 'data/vectors.npy'
 DOCMAP_PATH  = 'data/docmap.json'
+EPS = 1e-8  # ゼロ割防止用
 
 def load_data(vect_path: str, map_path: str):
-    # メモリマップで読み込み（必要なスライスだけメモリにロード）
     vecs   = np.load(vect_path, mmap_mode='r')
     docmap = json.load(open(map_path, 'r'))
     # 逆引きマップ：行インデックス → RFC番号(int)
@@ -17,30 +17,47 @@ def load_data(vect_path: str, map_path: str):
     return vecs, docmap, revmap
 
 def semantic_search(vecs, docmap, revmap, query_num, topk):
-    from sklearn.metrics.pairwise import cosine_similarity
-
-    idx   = docmap.get(str(query_num))
+    """
+    手動コサイン類似度計算 + np.argpartition で高速上位抽出
+    """
+    idx = docmap.get(str(query_num))
     if idx is None:
         raise ValueError(f'RFC{query_num} が見つかりません')
-    q_vec = vecs[idx:idx+1]
-    sims  = cosine_similarity(q_vec, vecs, dense_output=False).toarray()[0]
-    # 自分自身を除いて上位 topk 件を取得
-    best  = np.argpartition(-sims, topk + 1)[: topk + 1]
-    best  = [i for i in best if i != idx]
-    best  = sorted(best, key=lambda i: -sims[i])[:topk]
-    return [(revmap[i], float(sims[i])) for i in best]
+
+    # クエリベクトルと全体ベクトルを L2 正規化
+    q = vecs[idx].astype(np.float64)
+    V = vecs.astype(np.float64)
+    q_norm = np.linalg.norm(q) + EPS
+    V_norm = np.linalg.norm(V, axis=1) + EPS
+    sims = (V @ q) / (V_norm * q_norm)  # shape (N,)
+
+    # NaN を -1.0 に置換（ゼロベクトル対策）
+    sims = np.nan_to_num(sims, nan=-1.0)
+
+    # 自身を除いた上位 topk を argpartition で取得
+    # topk+1 件を取って自身を削除し、最終 topk 件に絞る
+    cand = np.argpartition(-sims, topk + 1)[: topk + 1].tolist()
+    cand = [i for i in cand if i != idx]
+    cand = sorted(cand, key=lambda i: -sims[i])[:topk]
+
+    return [(revmap[i], float(sims[i])) for i in cand]
 
 def calc_similarity(vecs, docmap, revmap, r1, r2):
-    from sklearn.metrics.pairwise import cosine_similarity
-
+    """
+    手動コサイン類似度 + ユークリッド距離
+    """
     i1 = docmap.get(str(r1))
     i2 = docmap.get(str(r2))
     if i1 is None or i2 is None:
         raise ValueError('指定のRFCが見つかりません')
-    v1       = vecs[i1]
-    v2       = vecs[i2]
-    cos_sim  = float(cosine_similarity(v1[None], v2[None])[0,0])
-    euclid   = float(np.linalg.norm(v1 - v2))
+
+    v1 = vecs[i1].astype(np.float64)
+    v2 = vecs[i2].astype(np.float64)
+    norm1 = np.linalg.norm(v1) + EPS
+    norm2 = np.linalg.norm(v2) + EPS
+
+    cos_sim = float((v1 @ v2) / (norm1 * norm2))
+    euclid  = float(np.linalg.norm(v1 - v2))
     return cos_sim, euclid
 
 def cluster_and_plot(vecs, revmap, n_clusters, sample_n, perplexity):
@@ -49,20 +66,22 @@ def cluster_and_plot(vecs, revmap, n_clusters, sample_n, perplexity):
     from matplotlib import pyplot as plt
 
     n_docs = vecs.shape[0]
-    # サンプリング（全件だと数千件で遅い場合がある）
-    if sample_n and sample_n < n_docs:
-        idxs = np.random.default_rng(0).choice(n_docs, sample_n, replace=False)
+
+    # サンプリング（必要に応じて全件 or 指定件数）
+    if 0 < sample_n < n_docs:
+        rng = np.random.default_rng(0)
+        idxs = rng.choice(n_docs, sample_n, replace=False)
         data = vecs[idxs]
-        labels_map = {j: revmap[i] for j, i in enumerate(idxs)}
+        rev = {j: revmap[i] for j, i in enumerate(idxs)}
     else:
         data = vecs
-        labels_map = revmap
+        rev = revmap
 
     # クラスタリング
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(data)
-    labels = kmeans.labels_
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
+    labels = kmeans.fit_predict(data)
 
-    # 次元削減（PCA 初期化 + 調整可能な perplexity）
+    # 次元削減 (t-SNE)
     tsne = TSNE(
         n_components=2,
         init='pca',
@@ -83,25 +102,31 @@ def cluster_and_plot(vecs, revmap, n_clusters, sample_n, perplexity):
 
 def main():
     p = argparse.ArgumentParser(description='Analyze RFC embeddings')
-    p.add_argument('--vect', default=VECTORS_PATH, help='埋め込みベクトルファイルパス')
-    p.add_argument('--map',  default=DOCMAP_PATH,  help='RFC→行マップJSONパス')
+    p.add_argument('--vect', default=VECTORS_PATH,
+                   help='埋め込みベクトルファイルパス')
+    p.add_argument('--map',  default=DOCMAP_PATH,
+                   help='RFC→行マップJSONパス')
     sub = p.add_subparsers(dest='cmd', required=True)
 
-    # --- Semantic Search ---
+    # semantic search
     s = sub.add_parser('search', help='意味的に近いRFCを検索')
     s.add_argument('rfc',   type=int, help='クエリにするRFC番号')
-    s.add_argument('--topk', type=int, default=5, help='返す件数')
+    s.add_argument('--topk', type=int, default=5,
+                   help='返す件数')
 
-    # --- Similarity ---
+    # similarity
     t = sub.add_parser('sim', help='2つのRFC間の類似度計算')
     t.add_argument('r1', type=int, help='RFC番号①')
     t.add_argument('r2', type=int, help='RFC番号②')
 
-    # --- Clustering & Visualization ---
+    # clustering & visualization
     c = sub.add_parser('cluster', help='クラスタリング＆可視化')
-    c.add_argument('--k',          type=int, default=8,   help='クラスタ数')
-    c.add_argument('--sample',     type=int, default=0,   help='t-SNE用サンプル件数 (0=全件)')
-    c.add_argument('--perplexity', type=float, default=30, help='t-SNE perplexity')
+    c.add_argument('--k',          type=int, default=8,
+                   help='クラスタ数')
+    c.add_argument('--sample',     type=int, default=0,
+                   help='t-SNE用サンプル件数 (0=全件)')
+    c.add_argument('--perplexity', type=float, default=30,
+                   help='t-SNE perplexity')
 
     args = p.parse_args()
     vecs, docmap, revmap = load_data(args.vect, args.map)
@@ -119,7 +144,8 @@ def main():
         print(f'  Euclidean distance : {euc:.4f}')
 
     elif args.cmd == 'cluster':
-        print(f'Clustering into k={args.k}, sample={args.sample or "all"} docs, perplexity={args.perplexity}...')
+        print(f'Clustering into k={args.k}, sample={args.sample or "all"} docs, '
+              f'perplexity={args.perplexity}...')
         cluster_and_plot(vecs, revmap, args.k, args.sample, args.perplexity)
 
 if __name__ == '__main__':
