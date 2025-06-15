@@ -105,12 +105,33 @@ poetry run rfc-chronicle index-fulltext
 - メモリ管理／大規模データ対応の確認
 - （オプション）差分追加対応：「既存配列読み込み → 新規分を concat → 上書き保存」
 
-**これが実装できるとできること**
+**scripts/build_embeddings.py 作成後**
 
-- 以下のような従来の全文キーワード検索を超えた知的探索・分析が可能になります。
-  - 「意味的に近いRFCを探す」
-  - 「ドキュメント間の類似度を定量化する」
-  - 「大量のRFCをトピック別に分類・可視化する」
+```bash
+# venv に NumPy を入れる
+
+python3 -m venv .venv
+
+source .venv/bin/activate
+
+pip install numpy sentence-transformers torch tqdm
+
+chmod +x scripts/build_embeddings.py
+
+# スクリプト実行例
+./scripts/build_embeddings.py \
+  --textdir data/texts \       # 読み込む *.txt を置いたディレクトリ
+  --out-vect data/vectors.npy \# 出力する埋め込みベクトルファイル
+  --out-map  data/docmap.json \# 出力する RFC 番号→行マップ
+  --batch   32                 # １バッチあたりのファイル数
+
+
+# オプション例：バッチサイズを小さくしてさらに低負荷に
+./scripts/build_embeddings.py --batch 16
+```
+
+**これが実装できるとできること**
+- 「意味的検索」「類似度計算」「クラスタリング・可視化」などを行えます。
 
 ---
 
