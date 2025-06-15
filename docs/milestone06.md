@@ -116,6 +116,8 @@ source .venv/bin/activate
 
 pip install numpy sentence-transformers torch tqdm
 
+pip install matplotlib
+
 chmod +x scripts/build_embeddings.py
 
 # スクリプト実行例
@@ -132,6 +134,32 @@ chmod +x scripts/build_embeddings.py
 
 **これが実装できるとできること**
 - 「意味的検索」「類似度計算」「クラスタリング・可視化」などを行えます。
+
+**使用例**
+
+- Semantic Search
+```bash
+# RFC123 に意味的に近い上位 5 件を表示
+
+python3 scripts/analyze_embeddings.py search 123 --topk 5 
+```
+
+  
+- Similarity
+```bash
+# RFC123 と RFC456 間のコサイン類似度＆ユークリッド距離を表示
+
+python3 scripts/analyze_embeddings.py sim 123 456
+```
+  
+- Clustering & Visualization
+```bash
+# 全 9588 件を 8 クラスターに分け、t-SNE で 2 次元プロット
+ 
+python3 scripts/analyze_embeddings.py cluster --k 8
+```
+
+
 
 ---
 
