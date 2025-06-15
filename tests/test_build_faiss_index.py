@@ -20,6 +20,7 @@ def temp_data_dir(tmp_path, monkeypatch):
 def get_script_path():
     return Path(__file__).parent.parent / "scripts" / "build_faiss_index.py"
 
+
 def test_fresh_build_creates_index_file(temp_data_dir):
     index_path = temp_data_dir / "faiss_index.bin"
     script = get_script_path()
@@ -31,6 +32,7 @@ def test_fresh_build_creates_index_file(temp_data_dir):
     idx = faiss.read_index(str(index_path))
     assert isinstance(idx, faiss.IndexFlatL2)
     assert idx.ntotal == 10, f"期待件数 10, 実際 {idx.ntotal}"
+
 
 def test_update_mode_increases_count(temp_data_dir):
     index_path = temp_data_dir / "faiss_index.bin"
@@ -45,3 +47,31 @@ def test_update_mode_increases_count(temp_data_dir):
     # インデックス件数が増えていることを確認
     idx = faiss.read_index(str(index_path))
     assert idx.ntotal == 15, f"期待件数 15, 実際 {idx.ntotal}"
+
+
+def test_ivf_build_creates_ivf_index(temp_data_dir):
+    index_path = temp_data_dir / "faiss_index.bin"
+    script = get_script_path()
+    # IVF 全量ビルドを実行
+    os.system(f"python3 {script} -v data/vectors.npy -i data/faiss_index.bin -t ivf")
+    # ファイル生成の確認
+    assert index_path.exists(), "IVF インデックスファイルが作成されていません"
+    # インデックスの型と件数チェック
+    idx = faiss.read_index(str(index_path))
+    assert isinstance(idx, faiss.IndexIVFFlat), f"期待型 IndexIVFFlat, 実際 {type(idx)}"
+    assert idx.ntotal == 10, f"期待件数 10, 実際 {idx.ntotal}"
+    # IVF インデックスは train 済みであること
+    assert idx.is_trained, "IVF インデックスが train されていません"
+
+
+def test_hnsw_build_creates_hnsw_index(temp_data_dir):
+    index_path = temp_data_dir / "faiss_index.bin"
+    script = get_script_path()
+    # HNSW 全量ビルドを実行
+    os.system(f"python3 {script} -v data/vectors.npy -i data/faiss_index.bin -t hnsw")
+    # ファイル生成の確認
+    assert index_path.exists(), "HNSW インデックスファイルが作成されていません"
+    # インデックスの型と件数チェック
+    idx = faiss.read_index(str(index_path))
+    assert isinstance(idx, faiss.IndexHNSWFlat), f"期待型 IndexHNSWFlat, 実際 {type(idx)}"
+    assert idx.ntotal == 10, f"期待件数 10, 実際 {idx.ntotal}"
