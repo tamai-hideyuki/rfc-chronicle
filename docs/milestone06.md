@@ -105,12 +105,61 @@ poetry run rfc-chronicle index-fulltext
 - メモリ管理／大規模データ対応の確認
 - （オプション）差分追加対応：「既存配列読み込み → 新規分を concat → 上書き保存」
 
-**これが実装できるとできること**
+**scripts/build_embeddings.py 作成後**
 
-- 以下のような従来の全文キーワード検索を超えた知的探索・分析が可能になります。
-  - 「意味的に近いRFCを探す」
-  - 「ドキュメント間の類似度を定量化する」
-  - 「大量のRFCをトピック別に分類・可視化する」
+```bash
+# venv に NumPy を入れる
+
+python3 -m venv .venv
+
+source .venv/bin/activate
+
+pip install numpy sentence-transformers torch tqdm
+
+pip install matplotlib
+
+chmod +x scripts/build_embeddings.py
+
+# スクリプト実行例
+./scripts/build_embeddings.py \
+  --textdir data/texts \       # 読み込む *.txt を置いたディレクトリ
+  --out-vect data/vectors.npy \# 出力する埋め込みベクトルファイル
+  --out-map  data/docmap.json \# 出力する RFC 番号→行マップ
+  --batch   32                 # １バッチあたりのファイル数
+
+
+# オプション例：バッチサイズを小さくしてさらに低負荷に
+./scripts/build_embeddings.py --batch 16
+```
+
+**これが実装できるとできること**
+- 「意味的検索」「類似度計算」「クラスタリング・可視化」などを行えます。
+
+**使用例**
+
+- Semantic Search
+```bash
+# RFC123 に意味的に近い上位 5 件を表示
+
+python3 scripts/analyze_embeddings.py search 123 --topk 5 
+```
+
+  
+- Similarity
+```bash
+# RFC123 と RFC456 間のコサイン類似度＆ユークリッド距離を表示
+
+python3 scripts/analyze_embeddings.py sim 123 456
+```
+  
+- Clustering & Visualization
+```bash
+# 全 9588 件を 8 クラスターに分け、t-SNE で 2 次元プロット
+ 
+python3 scripts/analyze_embeddings.py cluster --k 8
+```
+
+
 
 ---
 
@@ -127,6 +176,31 @@ poetry run rfc-chronicle index-fulltext
 - 差分追加運用オプション：「既存インデックス読み込み → `add()` → 上書き保存」
 - 将来的なインデックスタイプ切替設計（Flat, IVF, HNSW）
 - ユニットテスト追加
+
+**テスト**
+```bash
+pytest tests/test_build_faiss_index.py -q
+
+poetry run pytest tests/test_build_faiss_index.py -q
+```
+
+**FAISS ビルド機能動作確認**
+```bash
+# Flat インデックス生成
+poetry run rfc-chronicle build-faiss
+
+# IVF インデックス生成
+poetry run rfc-chronicle build-faiss --type ivf
+
+# HNSW インデックス生成
+poetry run rfc-chronicle build-faiss --type hnsw
+
+# 更新モード
+poetry run rfc-chronicle build-faiss -u --vectors data/new_vectors.npy
+
+
+```
+# 【M6-3】:
 
 ---
 
