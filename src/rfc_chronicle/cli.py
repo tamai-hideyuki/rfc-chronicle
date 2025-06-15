@@ -1,32 +1,40 @@
+"""
+RFC-Chronicle ─ CLI エントリポイント
+"""
+
+from __future__ import annotations
+
 import json
 import re
-import click
 import sqlite3
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
+
+import click
 import faiss
 import numpy as np
-
-from pathlib import Path
-from typing import Optional, Set, List, Dict, Any
 from requests.exceptions import HTTPError
 
+# ─────────────────────────────────────────────── import RFC-Chronicle internals
 from rfc_chronicle.fetch_rfc import client as rfc_client
-from rfc_chronicle.formatters import format_json, format_csv, format_md
-from rfc_chronicle.index_fulltext import build_fulltext_db, DB_PATH
+from rfc_chronicle.formatters import format_csv, format_json, format_md
+from rfc_chronicle.index_fulltext import DB_PATH, build_fulltext_db
+from rfc_chronicle.search import semsearch
 
 from scripts.build_faiss_index import (
     build_flat_index,
-    build_ivf_index,
     build_hnsw_index,
+    build_ivf_index,
     load_vectors,
     save_index,
 )
 
-# プロジェクト直下の metadata.json
-DATA_META = Path.cwd() / "data" / "metadata.json"
-# テスト用にモック可能なピン保存先（Noneなら無効化）
-PINS_FILE: Optional[Path] = None
+# ─────────────────────────────────────────────── constants / globals
+DATA_META: Path = Path.cwd() / "data" / "metadata.json"
+PINS_FILE: Optional[Path] = None  # tests で差し替え可
 
 
+# ═══════════════════════════════════════════════ helper ─ pins
 def _load_pins() -> Set[str]:
     if not PINS_FILE or not PINS_FILE.exists():
         return set()
@@ -39,74 +47,79 @@ def _save_pins(pins: Set[str]) -> None:
     PINS_FILE.write_text(json.dumps(sorted(pins), ensure_ascii=False), encoding="utf-8")
 
 
+# ═══════════════════════════════════════════════ root group
 @click.group()
 def cli() -> None:
-    """RFC Chronicle CLI"""
+    """RFC-Chronicle CLI"""
     pass
 
 
+# ═══════════════════════════════════════════════ semsearch
+@cli.command("semsearch")
+@click.argument("query")
+@click.option("--topk", default=10, show_default=True, help="返す上位件数")
+def semsearch_cli(query: str, topk: int) -> None:
+    """FAISS ベクトル検索（セマンティック検索）"""
+    for num, dist in semsearch(query, topk):
+        click.echo(f"RFC{num}\t{dist:.4f}")
+
+
+# ═══════════════════════════════════════════════ fetch
 @cli.command()
-@click.option('-s', '--save', is_flag=True, help="ローカルにメタデータを保存")
+@click.option("-s", "--save", is_flag=True, help="ローカルにメタデータを保存")
 def fetch(save: bool) -> None:
-    """全 RFC のメタデータを取得・（オプションで）本文ヘッダ情報とマージして保存"""
+    """全 RFC のメタデータを取得し、必要なら本文ヘッダとマージして保存"""
     try:
         meta_list = rfc_client.fetch_metadata(save=False)
         click.echo(f"Fetched {len(meta_list)} records.")
 
-        if save:
-            texts_dir = Path("data/texts")
-            texts_dir.mkdir(parents=True, exist_ok=True)
+        if not save:
+            return
 
-            enriched: List[Dict[str, Any]] = []
-            for m in meta_list:
-                num = m.get("number") or m.get("rfc_number")
-                try:
-                    detail = rfc_client.fetch_details(m, texts_dir, use_conditional=False)
-                except HTTPError as e:
-                    if e.response.status_code == 404:
-                        click.echo(f"RFC{num}: Not Found, skipped")
-                        continue
-                    raise
-                enriched.append(detail)
+        texts_dir = Path("data/texts")
+        texts_dir.mkdir(parents=True, exist_ok=True)
 
-            DATA_META.parent.mkdir(parents=True, exist_ok=True)
-            DATA_META.write_text(
-                json.dumps(enriched, ensure_ascii=False, indent=2),
-                encoding="utf-8"
-            )
-            click.echo(f"Saved enriched metadata to {DATA_META}")
-    except Exception as e:
-        click.echo(f"Error fetching metadata: {e}", err=True)
+        enriched: List[Dict[str, Any]] = []
+        for m in meta_list:
+            num = m.get("number") or m.get("rfc_number")
+            try:
+                detail = rfc_client.fetch_details(m, texts_dir, use_conditional=False)
+            except HTTPError as e:
+                if e.response.status_code == 404:
+                    click.echo(f"RFC{num}: Not Found, skipped")
+                    continue
+                raise
+            enriched.append(detail)
+
+        DATA_META.parent.mkdir(parents=True, exist_ok=True)
+        DATA_META.write_text(json.dumps(enriched, ensure_ascii=False, indent=2), encoding="utf-8")
+        click.echo(f"Saved enriched metadata to {DATA_META}")
+    except Exception as exc:  # pragma: no cover
+        click.echo(f"Error fetching metadata: {exc}", err=True)
 
 
+# ═══════════════════════════════════════════════ search (metadata filter)
 @cli.command()
-@click.option('--from-date', type=int, help="発行年 FROM (YYYY)")
-@click.option('--to-date',   type=int, help="発行年 TO   (YYYY)")
-@click.option('--keyword',   type=str, help="タイトルに含むキーワード")
-def search(
-    from_date: Optional[int],
-    to_date:   Optional[int],
-    keyword:   Optional[str],
-) -> None:
-    """キャッシュ済みメタデータを絞り込み検索"""
+@click.option("--from-date", type=int, help="発行年 FROM (YYYY)")
+@click.option("--to-date", type=int, help="発行年 TO   (YYYY)")
+@click.option("--keyword", type=str, help="タイトルに含むキーワード")
+def search(from_date: int | None, to_date: int | None, keyword: str | None) -> None:
+    """キャッシュ済みメタデータを条件で絞り込み"""
     if not DATA_META.exists():
         click.echo("No metadata cache. まずは `fetch --save` を実行してください。", err=True)
         return
 
     data = json.loads(DATA_META.read_text(encoding="utf-8"))
-    results = []
+    results: List[Dict[str, Any]] = []
 
     for item in data:
-        year = None
-        date_str = item.get("date", "")
-        if date_str:
-            m = re.search(r"\b(\d{4})\b", date_str)
-            if m:
-                year = int(m.group(1))
+        year: int | None = None
+        if m := re.search(r"\b(\d{4})\b", item.get("date", "")):
+            year = int(m.group(1))
 
         if from_date and (year is None or year < from_date):
             continue
-        if to_date   and (year is None or year > to_date):
+        if to_date and (year is None or year > to_date):
             continue
         if keyword and keyword.lower() not in item.get("title", "").lower():
             continue
@@ -116,41 +129,49 @@ def search(
     click.echo(json.dumps(results, ensure_ascii=False, indent=2))
 
 
+# ═══════════════════════════════════════════════ show
 @cli.command()
-@click.argument('number', type=int)
-@click.option('-o', '--output', type=click.Choice(['json','csv','md']), default='md')
+@click.argument("number", type=int)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Choice(["json", "csv", "md"]),
+    default="md",
+    show_default=True,
+)
 def show(number: int, output: str) -> None:
-    """指定RFCの詳細（メタデータ＋本文）を表示"""
+    """指定 RFC の詳細を表示・エクスポート"""
     try:
-        meta_list = rfc_client.fetch_metadata(save=False)
         meta = next(
-            m for m in meta_list
+            m
+            for m in rfc_client.fetch_metadata(save=False)
             if rfc_client._normalize_number(m["number"]) == number
         )
 
         texts_dir = Path("data/texts")
         texts_dir.mkdir(parents=True, exist_ok=True)
-        details = rfc_client.fetch_details(meta, texts_dir, use_conditional=False)
+        detail = rfc_client.fetch_details(meta, texts_dir, use_conditional=False)
     except StopIteration:
         click.echo(f"RFC {number} が見つかりません", err=True)
         return
-    except Exception as e:
-        click.echo(str(e), err=True)
+    except Exception as exc:  # pragma: no cover
+        click.echo(str(exc), err=True)
         return
 
-    if output == 'json':
-        click.echo(format_json(details))
-    elif output == 'csv':
-        click.echo(format_csv(details))
+    if output == "json":
+        click.echo(format_json(detail))
+    elif output == "csv":
+        click.echo(format_csv(detail))
     else:
-        click.echo(f"# RFC {details['number']}: {details['title']}\n")
-        click.echo(format_md([details]))
+        click.echo(f"# RFC {detail['number']}: {detail['title']}\n")
+        click.echo(format_md([detail]))
 
 
+# ═══════════════════════════════════════════════ pin / unpin / pins
 @cli.command()
-@click.argument('number', type=str)
+@click.argument("number")
 def pin(number: str) -> None:
-    """RFC番号をピン（保存）"""
+    """RFC 番号をピン留め"""
     pins = _load_pins()
     if number in pins:
         click.echo(f"RFC {number} is already pinned.", err=True)
@@ -161,9 +182,9 @@ def pin(number: str) -> None:
 
 
 @cli.command()
-@click.argument('number', type=str)
+@click.argument("number")
 def unpin(number: str) -> None:
-    """ピンを外す"""
+    """ピンを解除"""
     pins = _load_pins()
     if number not in pins:
         click.echo(f"RFC {number} is not pinned.", err=True)
@@ -173,17 +194,18 @@ def unpin(number: str) -> None:
     click.echo(f"Unpinned RFC {number}")
 
 
-@cli.command('pins')
+@cli.command("pins")
 def list_pins() -> None:
-    """現在ピンしているRFC一覧を表示"""
+    """ピン一覧を表示"""
     pins = sorted(_load_pins())
     click.echo("\n".join(pins) if pins else "No pinned RFCs.")
 
 
+# ═══════════════════════════════════════════════ full-text index
 @cli.command("index-fulltext")
 def index_fulltext() -> None:
-    """SQLite FTS5 全文検索 DB を再構築します"""
-    click.echo(f"Rebuilding fulltext DB at {DB_PATH}…")
+    """SQLite FTS5 全文検索 DB を再構築"""
+    click.echo(f"Rebuilding fulltext DB at {DB_PATH} …")
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     build_fulltext_db()
     click.echo("Done.")
@@ -191,22 +213,21 @@ def index_fulltext() -> None:
 
 @cli.command("fulltext")
 @click.argument("query", nargs=-1)
-@click.option("--limit", "-n", default=20, help="返す件数")
+@click.option("--limit", "-n", default=20, show_default=True, help="返す件数")
 def fulltext(query: List[str], limit: int) -> None:
     """
-    FTS5 を使った全文検索:
-    data/fulltext.db の rfc_text テーブルを検索し
-    RFC番号・タイトル・スニペットを表示します
+    SQLite FTS5 を使った全文検索
+    RFC 番号・タイトル・抜粋を表示
     """
     q = " ".join(query)
-    db_path = Path.cwd() / "data" / "fulltext.db"
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(Path.cwd() / "data" / "fulltext.db")
     sql = """
-      SELECT number, title,
-             snippet(rfc_text, '[…]', '[…]', '…', 10, 3) AS excerpt
-      FROM rfc_text
-      WHERE rfc_text MATCH ?
-      LIMIT ?;
+        SELECT number,
+               title,
+               snippet(rfc_text, '[…]', '[…]', '…', 10, 3) AS excerpt
+        FROM   rfc_text
+        WHERE  rfc_text MATCH ?
+        LIMIT  ?;
     """
     for num, title, excerpt in conn.execute(sql, (q, limit)):
         click.echo(f"RFC{num}\t{title}")
@@ -214,57 +235,58 @@ def fulltext(query: List[str], limit: int) -> None:
     conn.close()
 
 
+# ═══════════════════════════════════════════════ build-faiss
 @cli.command("build-faiss")
 @click.option(
-    "--vectors", "-v",
+    "--vectors",
+    "-v",
     default="data/vectors.npy",
     type=click.Path(exists=True, dir_okay=False),
-    help="読み込むベクトルの .npy ファイルパス"
+    show_default=True,
+    help="入力ベクトル (.npy)",
 )
 @click.option(
-    "--index", "-i",
+    "--index",
+    "-i",
     default="data/faiss_index.bin",
     type=click.Path(dir_okay=False),
-    help="保存する FAISS インデックスファイルのパス"
+    show_default=True,
+    help="出力インデックス (.bin)",
 )
+@click.option("--update", "-u", is_flag=True, help="既存インデックスへ追加登録")
 @click.option(
-    "--update", "-u",
-    is_flag=True,
-    help="既存インデックスを読み込み、新規ベクトルを追加"
-)
-@click.option(
-    "--type", "-t",
-    type=click.Choice(["flat", "ivf", "hnsw"], case_sensitive=False),
+    "--type",
+    "-t",
+    type=click.Choice(["flat", "ivf", "hnsw"]),
     default="flat",
-    help="生成するインデックスタイプ (flat, ivf, hnsw)"
+    show_default=True,
+    help="インデックスタイプ",
 )
-def build_faiss(vectors, index, update, type):
-    """
-    NumPy ベクトルから FAISS インデックスを生成・更新する。
-    """
-    vectors_path = Path(vectors)
+def build_faiss(vectors: str, index: str, update: bool, type: str) -> None:
+    """NumPy ベクトルから FAISS インデックスを生成 / 更新"""
+    vecs = load_vectors(Path(vectors))
     index_path = Path(index)
-    vecs = load_vectors(vectors_path)
 
-    if update:
-        if not index_path.exists():
-            click.echo(f"既存インデックスが見つかりません ({index_path})。Flat で新規作成します。")
-            idx = build_flat_index(vecs)
-        else:
-            idx = faiss.read_index(str(index_path))
-            idx.add(vecs)
+    if update and index_path.exists():
+        idx = faiss.read_index(str(index_path))
+        idx.add(vecs)
         save_index(idx, index_path)
+        click.echo("Index updated.")
         return
+    if update and not index_path.exists():
+        click.echo("既存インデックスが無いので新規作成します。")
 
-    # 全量ビルド
     if type == "flat":
         idx = build_flat_index(vecs)
     elif type == "ivf":
         idx = build_ivf_index(vecs)
-    elif type == "hnsw":
+    else:  # hnsw
         idx = build_hnsw_index(vecs)
+
     save_index(idx, index_path)
+    click.echo(f"Index saved → {index_path}")
 
 
-if __name__ == "__main__":
+# ═══════════════════════════════════════════════ entrypoint
+if __name__ == "__main__":  # pragma: no cover
     cli()

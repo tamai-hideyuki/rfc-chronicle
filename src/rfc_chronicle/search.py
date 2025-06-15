@@ -1,6 +1,30 @@
+import json
+import faiss
+from sentence_transformers import SentenceTransformer
+from typing import List, Tuple
+
 from datetime import date
 from typing import List, Optional
 from .models import RfcMetadata
+from __future__ import annotations
+from pathlib import Path
+
+
+"""FAISS ベクトル検索ユーティリティ"""
+def semsearch(query: str, topk: int = 10) -> List[Tuple[int, float]]:
+    """
+    与えられたクエリ文字列で FAISS インデックスを検索し、
+    (RFC番号, 距離スコア) のリストを返す
+    """
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    index = faiss.read_index(str(Path("data/faiss_index.bin")))
+    docmap = json.loads(Path("data/docmap.json").read_text(encoding="utf-8"))
+
+    q_vec = model.encode([query])
+    D, I = index.search(q_vec, topk)
+
+    return [(int(docmap[str(idx)]), float(dist)) for dist, idx in zip(D[0], I[0])]
+
 
 def filter_rfcs(
     rfcs: List[RfcMetadata],
