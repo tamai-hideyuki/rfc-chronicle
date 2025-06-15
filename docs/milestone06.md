@@ -177,6 +177,12 @@ python3 scripts/analyze_embeddings.py cluster --k 8
 - 将来的なインデックスタイプ切替設計（Flat, IVF, HNSW）
 - ユニットテスト追加
 
+**テスト**
+```bash
+pytest tests/test_build_faiss_index.py -q
+
+poetry run pytest tests/test_build_faiss_index.py -q
+```
 ---
 
 ## CLI コマンド semsearch を追加する
