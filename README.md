@@ -67,6 +67,16 @@ poetry install
 
 ## 使い方
 
+### 0. 仮想環境有効化
+
+```bash
+# (1) venv を作成（プロジェクト直下に .venv フォルダが作られる）
+python3 -m venv .venv
+
+# (2) 仮想環境を有効化
+source .venv/bin/activate
+```
+
 ### 1. メタデータ取得
 
 ```bash
@@ -134,81 +144,71 @@ poetry run rfc-chronicle pins       # ピン一覧
 
 ---
 
-### 現在のコマンド一覧
+| コマンド                                                                        | 説明                                                                      |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `rfc-chronicle fetch`                                                       | RFC メタデータ一覧を取得し、件数を表示                                                   |
+| `rfc-chronicle fetch --save`                                                | メタデータ＋本文ヘッダを `data/metadata.json` に保存、本文テキストを `data/texts/` にダウンロード     |
+| `rfc-chronicle index-fulltext`                                              | SQLite FTS5 で全文検索インデックスを再構築 (`data/metadata.json`＋`data/texts/` → FTS5) |
+| `rfc-chronicle fulltext <query> [--limit N]`                                | キーワード全文検索。デフォルト上位20件、`--limit` で表示件数を調整                                 |
+| `rfc-chronicle show <RFC番号> [--output md\|json\|csv]`                       | 指定RFCの詳細（メタデータ＋本文）を Markdown/JSON/CSV で出力                               |
+| `rfc-chronicle search [--from-date YYYY] [--to-date YYYY] [--keyword WORD]` | 発行年やタイトルキーワードでメタデータを絞り込み、JSON で出力                                       |
+| `rfc-chronicle pin <RFC番号>`                                                 | 指定RFCを「ピン留め」（お気に入り登録）                                                   |
+| `rfc-chronicle unpin <RFC番号>`                                               | 指定RFCのピンを解除                                                             |
+| `rfc-chronicle pins`                                                        | 現在ピン留め中のRFC番号一覧を表示                                                      |
 
+## 補助スクリプト
+
+- 埋め込み生成
 ```bash
-# 1. メタデータ一覧だけ取得（件数を表示）
-poetry run rfc-chronicle fetch
-# → RFC-Editor から最新のメタデータ (number, title, date, status) を取得し、
-#    件数をコンソールに出力します。
-# ===========================================================================================
-# 2. 詳細を含めて metadata.json に保存
-poetry run rfc-chronicle fetch --save
-# → ① 全メタデータ取得
-#    ② data/texts/*.txt に本文をダウンロード
-#    ③ 本文ヘッダ（Author, Date, Title, ほか Key:Value）をパースしてメタデータにマージ
-#    ④ ./data/metadata.json に書き出します。
-# ===========================================================================================
-# 3. 全文検索インデックス(FTS5)を再構築
-poetry run rfc-chronicle index-fulltext
-# → ./data/metadata.json と data/texts/*.txt を読み込み、
-#    SQLite FTS5 仮想テーブルを作り直します。
-# ===========================================================================================
-# 4. キーワード全文検索
-poetry run rfc-chronicle fulltext <query> [--limit N]
-# → FTS5 インデックスを検索し、
-#    マッチした RFC 番号・タイトル・スニペットを上位 N 件表示します。
-#    N を省略するとデフォルト20件。
-#
-#  使用例：
-#
-#  例1: “OAuth” を含むRFCをデフォルト20件表示: poetry run rfc-chronicle fulltext OAuth
-#
-#  例2: “security transport” を含むRFCを上位5件だけ取得: poetry run rfc-chronicle fulltext security transport --limit 5
-#
-#  例3: 複数ワード (“network routing”) を AND 検索、上位3件表示: poetry run rfc-chronicle fulltext network routing --limit 3
-#
-# ===========================================================================================
-# 5. RFC詳細表示
-poetry run rfc-chronicle show <number> [--output md|json|csv]
-# → 指定RFC番号のメタデータ+本文を出力。
-#    --output md   : Markdown 形式
-#    --output json : JSON 形式
-#    --output csv  : CSV 形式
-# ===========================================================================================
-# 6. メタデータ絞り込み検索
-poetry run rfc-chronicle search [--from-date YYYY] [--to-date YYYY] [--keyword KEYWORD]
-# → キャッシュ済み metadata.json を対象に、
-#    発行年(from/to) やタイトルのキーワードでフィルタした一覧を JSON で返します。
-#
-#  使用例：
-#
-#  1970年以降に発行された RFC を調べる: poetry run rfc-chronicle search --from-date 1970
-#
-#  1980年から1990年の間に発行された RFC: poetry run rfc-chronicle search --from-date 1980 --to-date 1990
-#
-#  タイトルに “HTTP” が含まれる RFC: poetry run rfc-chronicle search --keyword HTTP
-#
-#  1990年以降かつタイトルに “Security” を含む RFC: poetry run rfc-chronicle search --from-date 1990 --keyword Security
-#
-#
-# ===========================================================================================
-# 7. RFCをピン留め
-poetry run rfc-chronicle pin <number>
-# → よく使うRFC番号をローカルに “ピン” して登録します。
-# ===========================================================================================
-# 8. ピンを解除
-poetry run rfc-chronicle unpin <number>
-# → 登録済みのピンを削除します。
-# ===========================================================================================
-# 9. ピン一覧表示
-poetry run rfc-chronicle pins
-# → 現在ピン留め中のRFC番号を一覧表示します。
-# ===========================================================================================
-# 10. セマンティック検索（未実装）
-# poetry run rfc-chronicle semsearch <query>
-# → 将来的にベクトル検索（sentence-transformers + FAISS）による
-#    意味的に近いRFCの検索を行います。
-# ===========================================================================================
+# 説明：全文テキストを Sentence-Transformers（all-MiniLM-L6-v2）で埋め込み → vectors.npy／docmap.json に出力
+
+python scripts/build_embeddings.py \
+  --textdir data/texts \
+  --out-vect data/vectors.npy \
+  --out-map  data/docmap.json \
+  --batch   32
 ```
 
+- 分析＆可視化
+```bash
+# 1) 意味的検索 (Semantic Search)
+python scripts/analyze_embeddings.py search <RFC番号> [--topk N]
+
+# 2) 類似度計算 (Similarity)
+python scripts/analyze_embeddings.py sim <RFC番号1> <RFC番号2>
+
+# 3) クラスタリング＆可視化 (Clustering & Visualization)
+python scripts/analyze_embeddings.py cluster \
+  --k <クラスタ数> \
+  [--sample <サンプル件数>] \
+  [--perplexity <t-SNE perplexity>] 
+```
+
+---
+
+## 各コマンドの使い方例
+
+```bash
+
+# メタデータ＋本文を取得
+rfc-chronicle fetch --save
+
+# “OAuth” を含む全文検索（上位10件）
+rfc-chronicle fulltext OAuth --limit 10
+
+# RFC1 を Markdown で表示
+rfc-chronicle show 1 --output md
+
+# 発行年 1990〜2000 の RFC を一覧
+rfc-chronicle search --from-date 1990 --to-date 2000
+
+# RFC123 に意味的に近い上位5件
+python scripts/analyze_embeddings.py search 123 --topk 5
+
+# RFC123 と RFC456 の類似度を計算
+python scripts/analyze_embeddings.py sim 123 456
+
+# 全文書を8クラスタに分け、サンプル2000件で可視化
+python scripts/analyze_embeddings.py cluster --k 8 --sample 2000 --perplexity 40
+
+```
