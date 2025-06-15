@@ -6,10 +6,9 @@ NumPy ベクトルから FAISS インデックスを生成・保存するスク�
 
 機能:
   - data/vectors.npy からベクトルを読み込む
-  - デフォルトで IndexFlatL2 を構築
+  - flat/ivf/hnsw の各種インデックスを構築
   - data/faiss_index.bin にシリアライズ保存（既存ファイルは上書き）
   - --update オプションで差分追加（既存インデックスを読み込み後、ベクトルを追加）
-  - 将来対応用にインデックスタイプ切替（Flat, IVF, HNSW）のスタブを用意
 """
 
 import argparse
@@ -28,9 +27,34 @@ def build_flat_index(vectors: np.ndarray) -> faiss.Index:
     return index
 
 
+def build_ivf_index(vectors: np.ndarray, nlist: int = 100) -> faiss.Index:
+    """
+    IVF (IndexIVFFlat) インデックスを生成し、ベクトルを訓練・追加して返す。
+    """
+    dim = vectors.shape[1]
+    quantizer = faiss.IndexFlatL2(dim)
+    index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_L2)
+    # インデックスを訓練してから追加
+    index.train(vectors)
+    index.add(vectors)
+    return index
+
+
+def build_hnsw_index(vectors: np.ndarray, m: int = 32) -> faiss.Index:
+    """
+    HNSW (IndexHNSWFlat) インデックスを生成し、ベクトルを追加して返す。
+    """
+    dim = vectors.shape[1]
+    index = faiss.IndexHNSWFlat(dim, m)
+    # 構築効率パラメータ
+    index.hnsw.efConstruction = 40
+    index.add(vectors)
+    return index
+
+
 def load_vectors(path: Path) -> np.ndarray:
     """
-    指定パスの .npy ファイルからベクトルを読み込んで返す。
+    指定パスの .npy ファイルからベクトルを読み込み、配列を返す。
     ファイルが存在しない場合は例外を投げる。
     """
     if not path.exists():
@@ -71,13 +95,12 @@ def main():
         "--type", "-t",
         choices=["flat", "ivf", "hnsw"],
         default="flat",
-        help="生成するインデックスタイプ（将来対応: flat/ivf/hnsw）"
+        help="生成するインデックスタイプ (flat, ivf, hnsw)"
     )
     args = parser.parse_args()
 
     vectors_path = Path(args.vectors)
     index_path = Path(args.index)
-
     vectors = load_vectors(vectors_path)
 
     if args.update:
@@ -90,12 +113,14 @@ def main():
             index.add(vectors)
         save_index(index, index_path)
     else:
-        # 全量ビルドモード
-        if args.type != "flat":
-            print(f"インデックスタイプ '{args.type}' は未実装のため、flat で生成します。")
-        index = build_flat_index(vectors)
+        # 全量ビルドモード: type に応じたインデックスを構築
+        if args.type == "flat":
+            index = build_flat_index(vectors)
+        elif args.type == "ivf":
+            index = build_ivf_index(vectors)
+        elif args.type == "hnsw":
+            index = build_hnsw_index(vectors)
         save_index(index, index_path)
-
 
 if __name__ == "__main__":
     main()
