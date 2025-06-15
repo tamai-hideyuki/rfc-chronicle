@@ -200,6 +200,7 @@ poetry run rfc-chronicle build-faiss -u --vectors data/new_vectors.npy
 
 
 ```
+# 【M6-3】:
 
 ---
 
