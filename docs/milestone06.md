@@ -186,14 +186,18 @@ poetry run pytest tests/test_build_faiss_index.py -q
 
 **FAISS ビルド機能動作確認**
 ```bash
-# flat
-poetry run rfc-chronicle build-faiss --vectors data/vectors.npy --index data/faiss_flat.bin
-# ivf
-poetry run rfc-chronicle build-faiss -t ivf
-# hnsw
-poetry run rfc-chronicle build-faiss -t hnsw
-# update
-poetry run rfc-chronicle build-faiss -u --vectors new.npy
+# Flat インデックス生成
+poetry run rfc-chronicle build-faiss
+
+# IVF インデックス生成
+poetry run rfc-chronicle build-faiss --type ivf
+
+# HNSW インデックス生成
+poetry run rfc-chronicle build-faiss --type hnsw
+
+# 更新モード
+poetry run rfc-chronicle build-faiss -u --vectors data/new_vectors.npy
+
 
 ```
 
