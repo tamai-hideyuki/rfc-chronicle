@@ -2,6 +2,9 @@ import json
 import re
 import click
 import sqlite3
+import faiss
+import numpy as np
+
 from pathlib import Path
 from typing import Optional, Set, List, Dict, Any
 from requests.exceptions import HTTPError
@@ -9,6 +12,14 @@ from requests.exceptions import HTTPError
 from rfc_chronicle.fetch_rfc import client as rfc_client
 from rfc_chronicle.formatters import format_json, format_csv, format_md
 from rfc_chronicle.index_fulltext import build_fulltext_db, DB_PATH
+
+from scripts.build_faiss_index import (
+    build_flat_index,
+    build_ivf_index,
+    build_hnsw_index,
+    load_vectors,
+    save_index,
+)
 
 # プロジェクト直下の metadata.json
 DATA_META = Path.cwd() / "data" / "metadata.json"
@@ -31,6 +42,7 @@ def _save_pins(pins: Set[str]) -> None:
 @click.group()
 def cli() -> None:
     """RFC Chronicle CLI"""
+    pass
 
 
 @cli.command()
@@ -38,12 +50,10 @@ def cli() -> None:
 def fetch(save: bool) -> None:
     """全 RFC のメタデータを取得・（オプションで）本文ヘッダ情報とマージして保存"""
     try:
-        # 1) メタデータ一覧だけ取得
         meta_list = rfc_client.fetch_metadata(save=False)
         click.echo(f"Fetched {len(meta_list)} records.")
 
         if save:
-            # 2) 本文ダウンロード＋ヘッダパースをマージ
             texts_dir = Path("data/texts")
             texts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -59,14 +69,12 @@ def fetch(save: bool) -> None:
                     raise
                 enriched.append(detail)
 
-            # 3) JSON に書き出し
             DATA_META.parent.mkdir(parents=True, exist_ok=True)
             DATA_META.write_text(
                 json.dumps(enriched, ensure_ascii=False, indent=2),
                 encoding="utf-8"
             )
             click.echo(f"Saved enriched metadata to {DATA_META}")
-
     except Exception as e:
         click.echo(f"Error fetching metadata: {e}", err=True)
 
@@ -89,7 +97,6 @@ def search(
     results = []
 
     for item in data:
-        # date 文字列から 4 桁の年を抽出
         year = None
         date_str = item.get("date", "")
         if date_str:
@@ -97,7 +104,6 @@ def search(
             if m:
                 year = int(m.group(1))
 
-        # フィルタ条件
         if from_date and (year is None or year < from_date):
             continue
         if to_date   and (year is None or year > to_date):
@@ -116,18 +122,15 @@ def search(
 def show(number: int, output: str) -> None:
     """指定RFCの詳細（メタデータ＋本文）を表示"""
     try:
-        # 1) メタデータ一覧から該当エントリを探す
         meta_list = rfc_client.fetch_metadata(save=False)
         meta = next(
             m for m in meta_list
             if rfc_client._normalize_number(m["number"]) == number
         )
 
-        # 2) 本文ダウンロード＋詳細取得
         texts_dir = Path("data/texts")
         texts_dir.mkdir(parents=True, exist_ok=True)
         details = rfc_client.fetch_details(meta, texts_dir, use_conditional=False)
-
     except StopIteration:
         click.echo(f"RFC {number} が見つかりません", err=True)
         return
@@ -135,7 +138,6 @@ def show(number: int, output: str) -> None:
         click.echo(str(e), err=True)
         return
 
-    # 出力フォーマット
     if output == 'json':
         click.echo(format_json(details))
     elif output == 'csv':
@@ -210,6 +212,58 @@ def fulltext(query: List[str], limit: int) -> None:
         click.echo(f"RFC{num}\t{title}")
         click.echo(f"  …{excerpt}…\n")
     conn.close()
+
+
+@cli.command("build-faiss")
+@click.option(
+    "--vectors", "-v",
+    default="data/vectors.npy",
+    type=click.Path(exists=True, dir_okay=False),
+    help="読み込むベクトルの .npy ファイルパス"
+)
+@click.option(
+    "--index", "-i",
+    default="data/faiss_index.bin",
+    type=click.Path(dir_okay=False),
+    help="保存する FAISS インデックスファイルのパス"
+)
+@click.option(
+    "--update", "-u",
+    is_flag=True,
+    help="既存インデックスを読み込み、新規ベクトルを追加"
+)
+@click.option(
+    "--type", "-t",
+    type=click.Choice(["flat", "ivf", "hnsw"], case_sensitive=False),
+    default="flat",
+    help="生成するインデックスタイプ (flat, ivf, hnsw)"
+)
+def build_faiss(vectors, index, update, type):
+    """
+    NumPy ベクトルから FAISS インデックスを生成・更新する。
+    """
+    vectors_path = Path(vectors)
+    index_path = Path(index)
+    vecs = load_vectors(vectors_path)
+
+    if update:
+        if not index_path.exists():
+            click.echo(f"既存インデックスが見つかりません ({index_path})。Flat で新規作成します。")
+            idx = build_flat_index(vecs)
+        else:
+            idx = faiss.read_index(str(index_path))
+            idx.add(vecs)
+        save_index(idx, index_path)
+        return
+
+    # 全量ビルド
+    if type == "flat":
+        idx = build_flat_index(vecs)
+    elif type == "ivf":
+        idx = build_ivf_index(vecs)
+    elif type == "hnsw":
+        idx = build_hnsw_index(vecs)
+    save_index(idx, index_path)
 
 
 if __name__ == "__main__":
