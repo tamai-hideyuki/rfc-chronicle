@@ -1,14 +1,14 @@
+from __future__ import annotations
+
 import json
+from pathlib import Path
+from typing import List, Tuple, Optional
+from datetime import date
+
 import faiss
 from sentence_transformers import SentenceTransformer
-from typing import List, Tuple
 
-from datetime import date
-from typing import List, Optional
 from .models import RfcMetadata
-from __future__ import annotations
-from pathlib import Path
-
 
 """FAISS ベクトル検索ユーティリティ"""
 def semsearch(query: str, topk: int = 10) -> List[Tuple[int, float]]:
