@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-scripts/build_faiss_index.py
-
 NumPy ベクトルから FAISS インデックスを生成・保存するスクリプト。
 
 機能:
@@ -30,8 +28,11 @@ def build_flat_index(vectors: np.ndarray) -> faiss.Index:
 def build_ivf_index(vectors: np.ndarray, nlist: int = 100) -> faiss.Index:
     """
     IVF (IndexIVFFlat) インデックスを生成し、ベクトルを訓練・追加して返す。
+    nlist はデータポイント数以下に自動調整される。
     """
-    dim = vectors.shape[1]
+    num_vectors, dim = vectors.shape
+    # クラスタ数はデータ数以下に調整
+    nlist = min(nlist, num_vectors)
     quantizer = faiss.IndexFlatL2(dim)
     index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_L2)
     # インデックスを訓練してから追加
