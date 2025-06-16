@@ -107,10 +107,10 @@ poetry run rfc-chronicle index-fulltext
 poetry run rfc-chronicle fulltext OAuth --limit 10
 ```
 
-### 5. 意味的検索（将来）
+### 5. 意味的検索
 
 ```bash
-# セマンティック検索（実装後）
+# セマンティック検索
 poetry run rfc-chronicle semsearch "セキュリティ トランスポート"
 ```
 
