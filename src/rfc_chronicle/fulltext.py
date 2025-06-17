@@ -1,18 +1,50 @@
 import sqlite3
-import json
-import re
 from pathlib import Path
-from typing import List, Dict, Any
-
-from rfc_chronicle.fetch_rfc import client as rfc_client
+from typing import List, Tuple
 
 # プロジェクト直下の data ディレクトリ
 BASE_DIR = Path.cwd() / "data"
-DB_PATH = BASE_DIR / "fulltext.db"
+DB_PATH = Path.cwd() / "data" / "fulltext.db"
 META_PATH = BASE_DIR / "metadata.json"
 TEXT_DIR = BASE_DIR / "texts"
 TABLE_NAME = "rfc_text"
 
+
+def rebuild_fulltext_index():
+    from .index_fulltext import build_fulltext_db
+    build_fulltext_db()
+
+
+def search_fulltext(query: str, limit: int = 10) -> List[Tuple[str, str]]:
+    """
+    data/fulltext.db の FTS テーブルを使って全文検索を実行し、
+    [(RFC番号, 検出箇所のスニペット), …] を返す。
+    """
+    db_path = Path("data/fulltext.db")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    sql = "SELECT rfc_number, snippet(rfc_text, -1, '…', '…', '…', 64) AS snip " \
+          "FROM rfc_text WHERE rfc_text MATCH ? LIMIT ?"
+    cursor.execute(sql, (query, limit))
+    results = cursor.fetchall()
+    conn.close()
+    return results  # List[Tuple[str, str]]
+
+def search_fulltext(query: str, limit: int = 10) -> List[Tuple[str, str]]:
+    """
+    data/fulltext.db の FTS5 テーブルを使って全文検索を実行し、
+    [(RFC番号, 検出箇所のスニペット), …] を返す。
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    sql = (
+        "SELECT number, snippet(rfc_text, -1, '…', '…', '…', 64) "
+        "FROM rfc_text WHERE content MATCH ? LIMIT ?"
+    )
+    cursor.execute(sql, (query, limit))
+    results = cursor.fetchall()
+    conn.close()
+    return results
 
 def _normalize_num_str(num_str: str) -> str:
     """

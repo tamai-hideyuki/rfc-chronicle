@@ -123,5 +123,30 @@ def main():
             index = build_hnsw_index(vectors)
         save_index(index, index_path)
 
+def build_faiss_index(
+    vectors_path: str = "data/vectors.npy",
+    index_path: str = "data/faiss_index.bin",
+    index_type: str = "flat",
+    update: bool = False,
+):
+    """
+    Interactive Shell や CLI から呼び出しやすいラッパー関数。
+    --vectors, --index, --type, --update オプションと同等の挙動をします。
+    """
+    import sys
+    # argparse で使っている main() を直接呼び出すために sys.argv を一時置き換え
+    old_argv = sys.argv[:]
+    sys.argv = ["build_faiss", "--vectors", vectors_path, "--index", index_path]
+    if update:
+        sys.argv.append("--update")
+    if index_type != "flat":
+        sys.argv.extend(["--type", index_type])
+    try:
+        # スクリプト中で定義された main() を呼び出す
+        main()
+    finally:
+        sys.argv = old_argv
+
+
 if __name__ == "__main__":
     main()
