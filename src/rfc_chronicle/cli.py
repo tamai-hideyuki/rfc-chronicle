@@ -5,13 +5,12 @@ import click
 
 from .fetch_rfc import RFCClient
 from .build_faiss import build_faiss_index
-
-from .fulltext import search_fulltext as fulltext_search, rebuild_fulltext_index
-from .search import search_metadata, semsearch as semantic_search
+from .fulltext import search_fulltext, rebuild_fulltext_index
+from .search import search_metadata, semsearch
 from .pin import pin_rfc, unpin_rfc, list_pins
-from .show import show_details
+from .formatters import format_json, format_csv, format_md
 
-# インタラクティブシェル用のクライアントインスタンス
+# インタラクティブシェル用クライアント
 client = RFCClient()
 
 class RFCChronicleShell(cmd.Cmd):
@@ -27,34 +26,34 @@ class RFCChronicleShell(cmd.Cmd):
     # ハイフンを含むコマンド名を許可
     identchars = cmd.Cmd.identchars + '-'
 
-    # クラス属性としても無効化
+    # クラス属性も無効化
     doc_header = None
     undoc_header = None
 
-    # コマンド一覧と日本語説明
+    # コマンド一覧と説明
     help_text = {
-        "build-faiss":    "NumPy ベクトルから FAISS インデックスを生成 / 更新",
-        "fetch":          "全 RFC のメタデータを取得し、必要なら本文ヘッダとマージして保存",
-        "fulltext":       "SQLite FTS5 を使った全文検索",
-        "index-fulltext": "SQLite FTS5 全文検索 DB を再構築",
-        "pin":            "RFC 番号をピン留め",
+        "fetch":          "全 RFC メタデータを取得・保存",
+        "build-faiss":    "NumPy ベクトルから FAISS インデックスを生成/更新",
+        "fulltext":       "SQLite FTS5 で全文検索",
+        "index-fulltext": "FTS5 全文検索 DB を再構築",
+        "search":         "キャッシュ済みメタデータをキーワードで絞り込み",
+        "semsearch":      "FAISS を用いたセマンティック検索",
+        "pin":            "RFC をピン留め",
         "pins":           "ピン一覧を表示",
-        "search":         "キャッシュ済みメタデータを条件で絞り込み",
-        "semsearch":      "FAISS ベクトル検索（セマンティック検索）",
-        "show":           "指定 RFC の詳細を表示・エクスポート",
+        "show":           "RFC 詳細を表示・エクスポート",
         "unpin":          "ピンを解除",
         "exit":           "シェルを終了",
     }
 
     def parseline(self, line):
-        """ハイフン入りコマンド名をメソッド名に合わせて変換"""
+        """ハイフン入りコマンド名を _ に変換"""
         cmd_name, arg, line = super().parseline(line)
         if cmd_name:
             cmd_name = cmd_name.replace('-', '_')
         return cmd_name, arg, line
 
     def do_help(self, arg):
-        """コマンド一覧とヘルプを表示"""
+        """コマンド一覧とヘルプ表示"""
         if arg:
             func = getattr(self, 'do_' + arg.replace('-', '_'), None)
             if func and func.__doc__:
@@ -68,43 +67,43 @@ class RFCChronicleShell(cmd.Cmd):
             print()
 
     def do_fetch(self, arg):
-        """全 RFC のメタデータを取得し、必要なら本文ヘッダとマージして保存"""
+        """全 RFC メタデータを取得・保存"""
         client.fetch_metadata(save=True)
 
     def do_build_faiss(self, arg):
-        """NumPy ベクトルから FAISS インデックスを生成 / 更新"""
+        """NumPy ベクトルから FAISS インデックスを生成/更新"""
         build_faiss_index()
 
     def do_fulltext(self, arg):
-        """SQLite FTS5 を使った全文検索"""
+        """SQLite FTS5 で全文検索"""
         if not arg:
             print("Usage: fulltext <keyword>")
         else:
-            for num, snippet in fulltext_search(arg):
+            for num, snippet in search_fulltext(arg):
                 print(f"RFC{num}\t…{snippet.strip()}…")
 
     def do_index_fulltext(self, arg):
-        """SQLite FTS5 全文検索 DB を再構築"""
+        """FTS5 全文検索 DB を再構築"""
         rebuild_fulltext_index()
 
     def do_search(self, arg):
-        """キャッシュ済みメタデータを条件で絞り込み"""
+        """キャッシュ済みメタデータをキーワードで絞り込み"""
         if not arg:
-            print("Usage: search <query>")
+            print("Usage: search <keyword>")
         else:
-            for entry in search_metadata(arg):
-                print(entry)
+            for rfc in search_metadata(arg):
+                print(rfc)
 
     def do_semsearch(self, arg):
-        """FAISS ベクトル検索（セマンティック検索）"""
+        """FAISS を用いたセマンティック検索"""
         if not arg:
-            print("Usage: semsearch <query>")
+            print("Usage: semsearch <keyword>")
         else:
-            for score, num in semantic_search(arg):
+            for score, num in semsearch(arg):
                 print(f"RFC{num}: {score}")
 
     def do_pin(self, arg):
-        """RFC 番号をピン留め"""
+        """RFC をピン留め"""
         pin_rfc(arg)
 
     def do_unpin(self, arg):
@@ -113,19 +112,30 @@ class RFCChronicleShell(cmd.Cmd):
 
     def do_pins(self, arg):
         """ピン一覧を表示"""
-        pins = list_pins()
-        print("Pinned RFCs:", ", ".join(pins))
+        print(", ".join(list_pins()))
 
     def do_show(self, arg):
-        """指定 RFC の詳細を表示・エクスポート"""
+        """RFC 詳細を表示・エクスポート: show <num> [json|csv|md]"""
         if not arg:
-            print("Usage: show <number> [--format=md|json|csv]")
+            print("Usage: show <number> [json|csv|md]")
+            return
+        parts = arg.split()
+        num = parts[0]
+        fmt = parts[1].lower() if len(parts)>1 else 'json'
+        save_dir = Path.cwd()/'data'/'texts'
+        details = client.fetch_details(num, save_dir)
+        records = details if isinstance(details, list) else [details]
+        if fmt=='json':
+            print(format_json(records))
+        elif fmt=='csv':
+            print(format_csv(records))
+        elif fmt in ('md','markdown'):
+            print(format_md(records))
         else:
-            show_details(arg)
+            print(f"Unknown format: {fmt}")
 
     def do_exit(self, arg):
         """シェルを終了"""
-        print("Bye!")
         return True
 
 @click.group()
@@ -138,5 +148,5 @@ def shell():
     """Start interactive shell"""
     RFCChronicleShell().cmdloop()
 
-if __name__ == '__main__':
+if __name__=='__main__':
     cli()
