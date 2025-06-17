@@ -1,12 +1,16 @@
 import cmd
 import click
+
 from .fetch_rfc import RFCClient
 from .build_faiss import build_faiss_index
 from .fulltext import search_fulltext as fulltext_search, rebuild_fulltext_index
 from .search import search_metadata, semsearch as semantic_search
 from .pin import pin_rfc, unpin_rfc, list_pins
-from .show import show_details
+
 from rfc_chronicle.fulltext import search_fulltext
+from rfc_chronicle.formatters import format_json, format_csv, format_md
+
+
 
 # インタラクティブシェル用のクライアントインスタンス
 client = RFCClient()
@@ -103,6 +107,38 @@ def fulltext_cmd(query: str, limit: int):
         return
     for rfc_num, snippet in results:
         click.echo(f"RFC{rfc_num}\t…{snippet.strip()}…")
+
+
+@cli.command("show")
+@click.argument("number", nargs=1)
+@click.option(
+    "-o", "--output",
+    type=click.Choice(["json", "csv", "md"], case_sensitive=False),
+    default="json", show_default=True,
+    help="表示フォーマットを選択します（json, csv, md）"
+)
+def show_cmd(number: str, output: str):
+    """
+    指定した RFC 番号のメタデータ＆本文の詳細を取得して表示します。
+    """
+    from pathlib import Path
+
+    # 保存先ディレクトリ
+    save_dir = Path.cwd() / "data" / "texts"
+
+    # RFC の詳細を取得
+    details = client.fetch_details(number, save_dir)
+
+    # 単一レコードの場合でもリスト化してフォーマッタへ渡す
+    records = details if isinstance(details, list) else [details]
+
+    # 出力
+    if output.lower() == "json":
+        click.echo(format_json(records))
+    elif output.lower() == "csv":
+        click.echo(format_csv(records))
+    elif output.lower() == "md":
+        click.echo(format_md(records))
 
 
 if __name__ == "__main__":
