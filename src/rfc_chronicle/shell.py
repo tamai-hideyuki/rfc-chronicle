@@ -1,7 +1,7 @@
 import cmd
 import textwrap
-import click
 from pathlib import Path
+import click
 
 from .fetch_rfc import RFCClient
 from .build_faiss import build_faiss_index
@@ -10,7 +10,6 @@ from .search import search_metadata, semantic_search
 from .pin import pin_rfc, unpin_rfc, list_pins
 from .show import show_details
 
-# 実行コマンド: poetry run rfc-chronicle shell
 # インタラクティブシェル用のクライアントインスタンス
 client = RFCClient()
 
@@ -20,10 +19,10 @@ class RFCChronicleShell(cmd.Cmd):
 
     # コマンド一覧と日本語説明
     help_text = {
-        "build_faiss":    "NumPy ベクトルから FAISS インデックスを生成 / 更新",
+        "build-faiss":    "NumPy ベクトルから FAISS インデックスを生成 / 更新",
         "fetch":          "全 RFC のメタデータを取得し、必要なら本文ヘッダとマージして保存",
         "fulltext":       "SQLite FTS5 を使った全文検索",
-        "index_fulltext": "SQLite FTS5 全文検索 DB を再構築",
+        "index-fulltext": "SQLite FTS5 全文検索 DB を再構築",
         "pin":            "RFC 番号をピン留め",
         "pins":           "ピン一覧を表示",
         "search":         "キャッシュ済みメタデータを条件で絞り込み",
@@ -36,7 +35,7 @@ class RFCChronicleShell(cmd.Cmd):
     def do_help(self, arg):
         """コマンド一覧とヘルプを表示"""
         if arg:
-            func = getattr(self, "do_" + arg, None)
+            func = getattr(self, "do_" + arg.replace("-", "_"), None)
             if func and func.__doc__:
                 print(textwrap.dedent(func.__doc__).strip())
             else:
@@ -44,8 +43,7 @@ class RFCChronicleShell(cmd.Cmd):
         else:
             print("Commands:")
             for name, desc in self.help_text.items():
-                cmd_name = name.replace("_", "-")
-                print(f"  {cmd_name:<13} {desc}")
+                print(f"  {name:<15} {desc}")
             print()
 
     def do_fetch(self, arg):
@@ -109,7 +107,6 @@ class RFCChronicleShell(cmd.Cmd):
         print("Bye!")
         return True
 
-# CLI Entry Point
 @click.group()
 def cli():
     """RFC Chronicle CLI"""
