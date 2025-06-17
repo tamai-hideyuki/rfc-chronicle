@@ -3,16 +3,35 @@ import json
 import re
 from pathlib import Path
 from typing import List, Dict, Any
-
+from .fetch_rfc import client as rfc_client
 from rfc_chronicle.fetch_rfc import client as rfc_client
 
 # プロジェクト直下の data ディレクトリ
 BASE_DIR = Path.cwd() / "data"
-DB_PATH = BASE_DIR / "fulltext.db"
+DB_PATH = Path.cwd() / "data" / "fulltext.db"
 META_PATH = BASE_DIR / "metadata.json"
 TEXT_DIR = BASE_DIR / "texts"
 TABLE_NAME = "rfc_text"
 
+
+def rebuild_fulltext_index():
+    from .index_fulltext import build_fulltext_db
+    build_fulltext_db()
+
+def fulltext_search(query: str):
+    """
+    SQLite FTS5 データベースを検索し、
+    (RFC番号, マッチしたテキストの一部) を返す。
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT number, snippet(rfc_text, -1, '<b>', '</b>', '...', 5) "
+        "FROM rfc_text WHERE content MATCH ? LIMIT 10",
+        (query,)
+    )
+    results = cur.fetchall()
+    conn.close()
+    return results
 
 def _normalize_num_str(num_str: str) -> str:
     """
