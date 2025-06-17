@@ -2,10 +2,11 @@ import cmd
 import click
 from .fetch_rfc import RFCClient
 from .build_faiss import build_faiss_index
-from .fulltext import fulltext_search, rebuild_fulltext_index
+from .fulltext import search_fulltext as fulltext_search, rebuild_fulltext_index
 from .search import search_metadata, semsearch as semantic_search
 from .pin import pin_rfc, unpin_rfc, list_pins
 from .show import show_details
+from rfc_chronicle.fulltext import search_fulltext
 
 # インタラクティブシェル用のクライアントインスタンス
 client = RFCClient()
@@ -88,6 +89,21 @@ def cli():
 def shell():
     "Start interactive shell"
     RFCChronicleShell().cmdloop()
+
+
+@cli.command("fulltext")
+@click.argument("query", nargs=1)
+@click.option("-l", "--limit", default=10, show_default=True,
+              help="取得する結果の最大件数")
+def fulltext_cmd(query: str, limit: int):
+    """すべての RFC 本文を対象に QUERY で全文検索します。"""
+    results = search_fulltext(query, limit)
+    if not results:
+        click.echo("結果が見つかりませんでした。")
+        return
+    for rfc_num, snippet in results:
+        click.echo(f"RFC{rfc_num}\t…{snippet.strip()}…")
+
 
 if __name__ == "__main__":
     cli()
