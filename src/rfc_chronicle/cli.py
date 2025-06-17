@@ -1,145 +1,142 @@
 import cmd
+import textwrap
+from pathlib import Path
 import click
 
 from .fetch_rfc import RFCClient
 from .build_faiss import build_faiss_index
+
 from .fulltext import search_fulltext as fulltext_search, rebuild_fulltext_index
 from .search import search_metadata, semsearch as semantic_search
 from .pin import pin_rfc, unpin_rfc, list_pins
-
-from rfc_chronicle.fulltext import search_fulltext
-from rfc_chronicle.formatters import format_json, format_csv, format_md
-
-
+from .show import show_details
 
 # インタラクティブシェル用のクライアントインスタンス
 client = RFCClient()
 
 class RFCChronicleShell(cmd.Cmd):
+    """RFC Chronicle Shell: interactive interface for RFC operations"""
+    def __init__(self):
+        super().__init__()
+        # 標準ヘッダーを無効化
+        self.doc_header = None
+        self.undoc_header = None
+
     intro = "Welcome to RFC Chronicle Shell. Type help or ? to list commands.\n"
     prompt = "> "
+    # ハイフンを含むコマンド名を許可
+    identchars = cmd.Cmd.identchars + '-'
+
+    # クラス属性としても無効化
+    doc_header = None
+    undoc_header = None
+
+    # コマンド一覧と日本語説明
+    help_text = {
+        "build-faiss":    "NumPy ベクトルから FAISS インデックスを生成 / 更新",
+        "fetch":          "全 RFC のメタデータを取得し、必要なら本文ヘッダとマージして保存",
+        "fulltext":       "SQLite FTS5 を使った全文検索",
+        "index-fulltext": "SQLite FTS5 全文検索 DB を再構築",
+        "pin":            "RFC 番号をピン留め",
+        "pins":           "ピン一覧を表示",
+        "search":         "キャッシュ済みメタデータを条件で絞り込み",
+        "semsearch":      "FAISS ベクトル検索（セマンティック検索）",
+        "show":           "指定 RFC の詳細を表示・エクスポート",
+        "unpin":          "ピンを解除",
+        "exit":           "シェルを終了",
+    }
+
+    def parseline(self, line):
+        """ハイフン入りコマンド名をメソッド名に合わせて変換"""
+        cmd_name, arg, line = super().parseline(line)
+        if cmd_name:
+            cmd_name = cmd_name.replace('-', '_')
+        return cmd_name, arg, line
+
+    def do_help(self, arg):
+        """コマンド一覧とヘルプを表示"""
+        if arg:
+            func = getattr(self, 'do_' + arg.replace('-', '_'), None)
+            if func and func.__doc__:
+                print(textwrap.dedent(func.__doc__).strip())
+            else:
+                print(f"No help for '{arg}'")
+        else:
+            print("Commands:")
+            for name, desc in self.help_text.items():
+                print(f"  {name:<15} {desc}")
+            print()
 
     def do_fetch(self, arg):
-        """Fetch all RFC metadata and store"""
+        """全 RFC のメタデータを取得し、必要なら本文ヘッダとマージして保存"""
         client.fetch_metadata(save=True)
 
     def do_build_faiss(self, arg):
-        """Build or update FAISS index"""
+        """NumPy ベクトルから FAISS インデックスを生成 / 更新"""
         build_faiss_index()
 
     def do_fulltext(self, arg):
-        """Fulltext search: fulltext <keyword>"""
+        """SQLite FTS5 を使った全文検索"""
         if not arg:
             print("Usage: fulltext <keyword>")
         else:
-            results = fulltext_search(arg)
-            for r in results:
-                print(r)
+            for num, snippet in fulltext_search(arg):
+                print(f"RFC{num}\t…{snippet.strip()}…")
 
     def do_index_fulltext(self, arg):
-        """Rebuild FTS5 fulltext index"""
+        """SQLite FTS5 全文検索 DB を再構築"""
         rebuild_fulltext_index()
 
     def do_search(self, arg):
-        """Search metadata: search <query>"""
+        """キャッシュ済みメタデータを条件で絞り込み"""
         if not arg:
             print("Usage: search <query>")
         else:
-            results = search_metadata(arg)
-            for r in results:
-                print(r)
+            for entry in search_metadata(arg):
+                print(entry)
 
     def do_semsearch(self, arg):
-        """Semantic search: semsearch <query>"""
+        """FAISS ベクトル検索（セマンティック検索）"""
         if not arg:
             print("Usage: semsearch <query>")
         else:
-            results = semantic_search(arg)
-            for score, num in results:
+            for score, num in semantic_search(arg):
                 print(f"RFC{num}: {score}")
 
     def do_pin(self, arg):
-        """Pin RFC: pin <number>"""
+        """RFC 番号をピン留め"""
         pin_rfc(arg)
 
     def do_unpin(self, arg):
-        """Unpin RFC: unpin <number>"""
+        """ピンを解除"""
         unpin_rfc(arg)
 
     def do_pins(self, arg):
-        """Show pinned RFCs"""
+        """ピン一覧を表示"""
         pins = list_pins()
         print("Pinned RFCs:", ", ".join(pins))
 
     def do_show(self, arg):
-        """Show details or export: show <number> [--format=md|json|csv]"""
+        """指定 RFC の詳細を表示・エクスポート"""
         if not arg:
-            print("Usage: show <number>")
+            print("Usage: show <number> [--format=md|json|csv]")
         else:
             show_details(arg)
 
     def do_exit(self, arg):
-        """Exit the shell"""
+        """シェルを終了"""
         print("Bye!")
         return True
 
-# CLI Entry Point
 @click.group()
 def cli():
-    "RFC Chronicle CLI"
+    """RFC Chronicle CLI"""
     pass
 
-@cli.command("shell")
+@cli.command('shell')
 def shell():
-    "Start interactive shell"
+    """Start interactive shell"""
     RFCChronicleShell().cmdloop()
 
-
-@cli.command("fulltext")
-@click.argument("query", nargs=1)
-@click.option("-l", "--limit", default=10, show_default=True,
-              help="取得する結果の最大件数")
-def fulltext_cmd(query: str, limit: int):
-    """すべての RFC 本文を対象に QUERY で全文検索します。"""
-    results = search_fulltext(query, limit)
-    if not results:
-        click.echo("結果が見つかりませんでした。")
-        return
-    for rfc_num, snippet in results:
-        click.echo(f"RFC{rfc_num}\t…{snippet.strip()}…")
-
-
-@cli.command("show")
-@click.argument("number", nargs=1)
-@click.option(
-    "-o", "--output",
-    type=click.Choice(["json", "csv", "md"], case_sensitive=False),
-    default="json", show_default=True,
-    help="表示フォーマットを選択します（json, csv, md）"
-)
-def show_cmd(number: str, output: str):
-    """
-    指定した RFC 番号のメタデータ＆本文の詳細を取得して表示します。
-    """
-    from pathlib import Path
-
-    # 保存先ディレクトリ
-    save_dir = Path.cwd() / "data" / "texts"
-
-    # RFC の詳細を取得
-    details = client.fetch_details(number, save_dir)
-
-    # 単一レコードの場合でもリスト化してフォーマッタへ渡す
-    records = details if isinstance(details, list) else [details]
-
-    # 出力
-    if output.lower() == "json":
-        click.echo(format_json(records))
-    elif output.lower() == "csv":
-        click.echo(format_csv(records))
-    elif output.lower() == "md":
-        click.echo(format_md(records))
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     cli()
