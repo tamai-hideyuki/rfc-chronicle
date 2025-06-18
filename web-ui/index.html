@@ -11,22 +11,19 @@
         .rfc-item { padding: 0.75rem; border-bottom: 1px solid #ccc; cursor: pointer; }
         .rfc-item:hover { background: #f5f5f5; }
 
-        /* 詳細エリアは初期状態で非表示 */
         #detailContainer { display: none; margin-top: 2rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; position: relative; }
-        /* 閉じるボタンのスタイル */
         .close-btn {
             position: absolute;
             top: 8px;
             right: 8px;
-            cursor: pointer;
             background: transparent;
             border: none;
             font-size: 1.25rem;
-            line-height: 1;
+            cursor: pointer;
         }
         pre { white-space: pre-wrap; word-break: break-word; }
         #error { color: red; margin-left: 1rem; }
-        .mode-switch { margin-top: 1rem; }
+        #loading { display: none; margin-left: 1rem; }
     </style>
 </head>
 <body>
@@ -34,138 +31,121 @@
 
 <div>
     <label for="searchInput">検索クエリ：</label>
-    <input id="searchInput" type="text" placeholder="HTTP" />
+    <input id="searchInput" type="text" placeholder="例: HTTP" />
     <button id="searchBtn">メタデータ検索</button>
     <button id="fulltextBtn">全文検索</button>
+    <button id="semsearchBtn">セマンティック検索</button>
+    <span id="loading">読み込み中...</span>
     <span id="error"></span>
 </div>
 
-<!-- 詳細表示エリア -->
 <div id="detailContainer"></div>
-
-<!-- 検索結果一覧 -->
-<div class="rfc-list" id="resultContainer">
-    <p>検索結果がここに表示されます</p>
-</div>
+<div class="rfc-list" id="resultContainer"><p>検索結果がここに表示されます</p></div>
 
 <script>
-    const resultContainer = document.getElementById('resultContainer');
-    const detailContainer = document.getElementById('detailContainer');
-    const errorEl = document.getElementById('error');
-    let searchMode = 'metadata'; // 'metadata' or 'fulltext'
+    const $ = id => document.getElementById(id);
+    const resultContainer = $('resultContainer');
+    const detailContainer = $('detailContainer');
+    const errorEl = $('error');
+    const loadingEl = $('loading');
+    let searchMode = 'metadata';
 
-    async function fetchMetadata(save = false) {
-        const res = await fetch(`/api/metadata?save=${save}`);
+    const setLoading = on => loadingEl.style.display = on ? 'inline' : 'none';
+
+    // 汎用 API 呼び出し
+    async function apiFetch(path) {
+        const res = await fetch(path);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         return res.json();
     }
 
-    async function searchMetadata(q) {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const data = await res.json();
-        return data.results;
-    }
-
-    async function searchFulltext(q) {
-        const res = await fetch(`/api/fulltext?q=${encodeURIComponent(q)}`);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const data = await res.json();
-        return data.results; // Assume array of { number, snippet }
-    }
-
-    async function showRFC(num) {
-        const res = await fetch(`/api/show/${num}`);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const data = await res.json();
-        detailContainer.style.display = 'block';
+    // API 関数定義
+    const fetchMetadata   = () => apiFetch('/api/metadata?save=false');
+    const searchMetadata  = q => apiFetch(`/api/search?q=${encodeURIComponent(q)}`).then(r => r.results);
+    const searchFulltext  = q => apiFetch(`/api/fulltext?q=${encodeURIComponent(q)}`).then(r => r.results);
+    const searchSemsearch = (q, topk=10) => apiFetch(`/api/semsearch?q=${encodeURIComponent(q)}&topk=${topk}`).then(r => r.results);
+    const showRFC = async num => {
+        const data = await apiFetch(`/api/show/${num}`);
         detailContainer.innerHTML = `
         <button class="close-btn" title="閉じる">✕</button>
-        <h2>RFC ${data.number.replace(/\D/g, '')}: ${data.title}</h2>
+        <h2>RFC ${data.number.replace(/\D/g,'')}: ${data.title}</h2>
         <p><strong>Date:</strong> ${data.date} &nbsp; <strong>Status:</strong> ${data.status}</p>
         <pre>${data.body}</pre>
       `;
-        detailContainer.querySelector('.close-btn').addEventListener('click', () => {
-            detailContainer.style.display = 'none';
-            detailContainer.innerHTML = '';
-        });
+        detailContainer.style.display = 'block';
+        detailContainer.querySelector('.close-btn').onclick = () => detailContainer.style.display = 'none';
         window.scrollTo({ top: detailContainer.offsetTop, behavior: 'smooth' });
-    }
+    };
 
+    // リスト描画
     function renderList(items) {
-        if (!items || items.length === 0) {
+        if (!items?.length) {
             resultContainer.innerHTML = '<p>結果なし</p>';
             return;
         }
-        if (searchMode === 'metadata') {
-            resultContainer.innerHTML = items.map(item => {
-                const num = item.replace(/\D/g, '');
-                return `<div class="rfc-item" data-rfc="${num}">RFC ${num}</div>`;
-            }).join('');
-        } else {
-            // fulltext mode: items are objects with number & snippet
-            resultContainer.innerHTML = items.map(item => {
-                const num = String(item.number);
-                const snippet = item.snippet || '';
-                return `<div class="rfc-item" data-rfc="${num}">
-                    <strong>RFC ${num}</strong><br/>
-                    <span>${snippet}</span>
-                  </div>`;
-            }).join('');
+        resultContainer.innerHTML = items.map(item => {
+            let num, label;
+            if (searchMode === 'metadata') {
+                num = String(item).match(/\d+/)[0];
+                label = `RFC ${num}`;
+            } else if (searchMode === 'fulltext') {
+                num = item.number;
+                label = `RFC ${num} – ${item.snippet}`;
+            } else {
+                // セマンティック検索: [score, num]
+                const [score, rfcNum] = item;
+                num = rfcNum;
+                label = `RFC ${num} (score: ${parseFloat(score).toFixed(4)})`;
+            }
+            return `<div class="rfc-item" data-rfc="${num}">${label}</div>`;
+        }).join('');
+    }
+
+    // 詳細表示
+    resultContainer.onclick = e => {
+        const el = e.target.closest('.rfc-item');
+        if (!el) return;
+        errorEl.textContent = '';
+        detailContainer.style.display = 'none';
+        setLoading(true);
+        showRFC(el.dataset.rfc)
+            .catch(err => errorEl.textContent = `Error: ${err.message}`)
+            .finally(() => setLoading(false));
+    };
+
+    // 検索実行
+    async function doSearch(fn) {
+        const q = $('searchInput').value.trim(); if (!q) return;
+        errorEl.textContent = '';
+        detailContainer.style.display = 'none';
+        setLoading(true);
+        try {
+            const items = await fn(q);
+            renderList(items);
+        } catch(err) {
+            errorEl.textContent = `Error: ${err.message}`;
+        } finally {
+            setLoading(false);
         }
     }
 
-    resultContainer.addEventListener('click', async (e) => {
-        const item = e.target.closest('.rfc-item');
-        if (!item) return;
-        errorEl.textContent = '';
-        detailContainer.style.display = 'none';
-        detailContainer.innerHTML = '';
-        try {
-            await showRFC(item.dataset.rfc);
-        } catch (err) {
-            errorEl.textContent = `Error: ${err.message}`;
-        }
-    });
+    // ボタンイベント
+    $('searchBtn').onclick = () => { searchMode='metadata'; doSearch(searchMetadata); };
+    $('fulltextBtn').onclick = () => { searchMode='fulltext'; doSearch(searchFulltext); };
+    $('semsearchBtn').onclick = () => { searchMode='semsearch'; doSearch(q => searchSemsearch(q, 20)); };
 
-    document.getElementById('searchBtn').addEventListener('click', async () => {
-        searchMode = 'metadata';
-        const q = document.getElementById('searchInput').value.trim();
-        errorEl.textContent = '';
-        detailContainer.style.display = 'none';
-        detailContainer.innerHTML = '';
-        if (!q) return;
-        try {
-            const items = await searchMetadata(q);
-            renderList(items);
-        } catch (err) {
-            errorEl.textContent = `Error: ${err.message}`;
-        }
-    });
-
-    document.getElementById('fulltextBtn').addEventListener('click', async () => {
-        searchMode = 'fulltext';
-        const q = document.getElementById('searchInput').value.trim();
-        errorEl.textContent = '';
-        detailContainer.style.display = 'none';
-        detailContainer.innerHTML = '';
-        if (!q) return;
-        try {
-            const items = await searchFulltext(q);
-            renderList(items);
-        } catch (err) {
-            errorEl.textContent = `Error: ${err.message}`;
-        }
-    });
-
-    window.addEventListener('DOMContentLoaded', async () => {
+    // 初期表示
+    window.onload = async () => {
+        setLoading(true);
         try {
             const all = await fetchMetadata();
             renderList(all.map(e => e.number));
-        } catch (err) {
+        } catch(err) {
             errorEl.textContent = `Error: ${err.message}`;
+        } finally {
+            setLoading(false);
         }
-    });
+    };
 </script>
 </body>
 </html>

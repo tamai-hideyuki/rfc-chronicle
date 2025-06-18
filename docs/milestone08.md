@@ -66,3 +66,9 @@ sequenceDiagram
   Back-->>Proxy: JSONRFC詳細
   Proxy-->>Browser: JSONRFC詳細
 ```
+
+- 現在の検索機能：
+- search
+- fulltext
+- semsearch
+- 
