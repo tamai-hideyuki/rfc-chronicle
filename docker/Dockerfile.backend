@@ -5,11 +5,10 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock /app/
 COPY src/ /app/src/
 
-# 依存関係インストール
 RUN pip install --upgrade pip \
-    && pip install poetry \
-    && poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --without dev
-
-# FastAPI を Uvicorn で起動
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "5000"]
+ && pip install poetry \
+ && poetry config virtualenvs.create false \
+ && poetry install --no-interaction --no-ansi --without dev
+COPY src/ /app/src/
+# uvicorn 起動
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "5000"]

@@ -14,6 +14,10 @@ click = "^8.1"
 requests = "^2.31"
 beautifulsoup4 = "^4.12"
 faiss-cpu = "^1.11.0"
+sentence-transformers = "^2.2.2"
+fastapi = "^0.100.0"
+uvicorn = { extras = ["standard"], version = "^0.22.0" }
+tqdm = "^4.66.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
@@ -24,4 +28,3 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 rfc-chronicle = "rfc_chronicle.cli:cli"
-

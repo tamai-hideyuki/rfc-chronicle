@@ -31,8 +31,8 @@ sequenceDiagram
   Front-->>Proxy: HTML/CSS/JS
   Proxy-->>Browser: レスポンス
 
-  Browser->>Proxy: GET /api/metadata
-  Proxy->>Back: GET /api/metadata
+  Browser->>Proxy: GET /api/metadata?save=false
+  Proxy->>Back: GET /api/metadata?save=false
   Back-->>Proxy: JSONメタデータ
   Proxy-->>Browser: JSONメタデータ
 
@@ -41,8 +41,28 @@ sequenceDiagram
   Back-->>Proxy: JSON検索結果
   Proxy-->>Browser: JSON検索結果
 
+  Browser->>Proxy: GET /api/semsearch?q=xxx&top_k=10
+  Proxy->>Back: GET /api/semsearch?q=xxx&top_k=10
+  Back-->>Proxy: JSONセマンティック検索結果
+  Proxy-->>Browser: JSONセマンティック検索結果
+
   Browser->>Proxy: POST /api/pin/1
   Proxy->>Back: POST /api/pin/1
   Back-->>Proxy: {status: "ok"}
   Proxy-->>Browser: {status: "ok"}
+
+  Browser->>Proxy: POST /api/unpin/1
+  Proxy->>Back: POST /api/unpin/1
+  Back-->>Proxy: {status: "ok"}
+  Proxy-->>Browser: {status: "ok"}
+
+  Browser->>Proxy: GET /api/pins
+  Proxy->>Back: GET /api/pins
+  Back-->>Proxy: JSONピン一覧
+  Proxy-->>Browser: JSONピン一覧
+
+  Browser->>Proxy: GET /api/show/1
+  Proxy->>Back: GET /api/show/1
+  Back-->>Proxy: JSONRFC詳細
+  Proxy-->>Browser: JSONRFC詳細
 ```

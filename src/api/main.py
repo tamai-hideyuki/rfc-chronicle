@@ -1,42 +1,39 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from rfc_chronicle.fetch_rfc import fetch_metadata
-from rfc_chronicle.search import search_metadata
-from rfc_chronicle.pin import pin_rfc, list_pins
+from rfc_chronicle.fetch_rfc import client
+from rfc_chronicle.search import search_metadata, semsearch
 
 app = FastAPI()
 
-# ブラウザ側起点なので必要に応じて CORS 許可
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:8080"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @app.get("/api/metadata")
-def api_metadata():
+async def get_metadata():
+    """
+    全 RFC メタデータを取得
+    """
     try:
-        return fetch_metadata()
+        # save=False にしてキャッシュのみ取得
+        return client.fetch_metadata(save=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/search")
-def api_search(q: str):
+async def api_search(q: str):
+    """
+    キーワードベースのメタデータ検索
+    """
     try:
-        return search_metadata(q)
+        return {"results": search_metadata(q)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/pin/{rfc_num}")
-def api_pin(rfc_num: int):
+
+@app.get("/api/semsearch")
+async def api_semsearch(q: str, topk: int = 10):
+    """
+    FAISS を使ったセマンティック検索
+    """
     try:
-        pin_rfc(rfc_num)
-        return {"status": "ok"}
+        return {"results": semsearch(q, topk)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/pins")
-def api_list_pins():
-    return list_pins()
