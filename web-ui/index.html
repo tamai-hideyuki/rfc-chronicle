@@ -9,19 +9,46 @@
 </head>
 <body>
 <h1>RFC Chronicle CLI Web UI</h1>
+
+<!-- 初期メタデータ表示 -->
 <pre id="app">読み込み中...</pre>
 
+<!-- 検索フォーム -->
+<div>
+    <input type="text" id="search-input" placeholder="検索クエリを入力" />
+    <button id="search-btn">検索</button>
+</div>
+<pre id="results">検索結果がここに表示されます</pre>
+
 <script>
-    // モック JSON をフェッチ
+    // 初期メタデータ取得
     async function fetchMetadata() {
         try {
-            const res = await fetch('data/metadata.json');
+            const res = await fetch('/api/metadata');
+            if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
             const data = await res.json();
             document.getElementById('app').textContent = JSON.stringify(data, null, 2);
         } catch (err) {
             document.getElementById('app').textContent = 'エラー: ' + err;
         }
     }
+
+    // 検索実行
+    document.getElementById('search-btn').addEventListener('click', async () => {
+        const q = document.getElementById('search-input').value;
+        const resultsEl = document.getElementById('results');
+        resultsEl.textContent = '検索中...';
+        try {
+            const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+            const data = await res.json();
+            resultsEl.textContent = JSON.stringify(data, null, 2);
+        } catch (err) {
+            resultsEl.textContent = 'エラー: ' + err;
+        }
+    });
+
+    // ページ読み込み時に最初のデータ取得
     fetchMetadata();
 </script>
 </body>

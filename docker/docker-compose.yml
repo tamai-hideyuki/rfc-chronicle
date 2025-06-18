@@ -1,8 +1,20 @@
 services:
-  web-ui:
+  api:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ".."            # docker/ から一つ上のプロジェクトルートを指す
+      dockerfile: "docker/Dockerfile.backend"  # docker/Dockerfile.backend を使用
+    container_name: rfc-api
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ".."            # 同じくプロジェクトルートを基点
+      dockerfile: "docker/Dockerfile.frontend" # docker/Dockerfile.frontend を使用
+    container_name: rfc-web-ui
+    depends_on:
+      - api
     ports:
       - "8080:80"
     restart: unless-stopped
