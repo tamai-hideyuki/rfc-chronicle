@@ -8,6 +8,7 @@ from rfc_chronicle.search import search_metadata, semsearch
 from rfc_chronicle.show import show_rfc_details
 from rfc_chronicle.fulltext import search_fulltext
 
+from api.schemas import SemSearchItem, SemSearchResponse
 
 def create_app() -> FastAPI:
     """
@@ -53,12 +54,18 @@ def create_app() -> FastAPI:
         """
         return {"results": await safe_run(search_metadata, q)}
 
-    @app.get("/api/semsearch", response_model=Dict[str, List[Tuple[float, str]]])
-    async def api_semsearch(q: str, topk: int = 10) -> Dict[str, List[Tuple[float, str]]]:
-        """
-        FAISS を用いたセマンティック検索。上位 topk 件を返却
-        """
-        return {"results": await safe_run(semsearch, q, topk)}
+    @app.get("/api/semsearch", response_model=SemSearchResponse)
+    async def api_semsearch(q: str, topk: int = 10) -> SemSearchResponse:
+        raw_results: List[Tuple[float, str | int]] = await safe_run(semsearch, q, topk)
+
+        # ここで文字列化
+        items = [
+            SemSearchItem(num=str(rfc_num), score=score)
+            for score, rfc_num in raw_results
+        ]
+        return SemSearchResponse(results=items)
+
+
 
     @app.get("/api/show/{rfc_num}", response_model=Dict[str, Any])
     async def api_show(rfc_num: int) -> Dict[str, Any]:
