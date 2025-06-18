@@ -1,8 +1,15 @@
-from typing import Any, Dict, List
+from pathlib import Path
+from rfc_chronicle.fetch_rfc import client
 
 
-def show_details(arg: str) -> None:
-    """「スタブ実装: RFCの詳細を表示するか、指定された形式でエクスポートする。」"""
-    # TODO: フォーマットフラグに基づいた取得とエクスポートを実装する
-    # 今のところは、引数をそのままエコーするだけ
-    print(f"Show command received: {arg}")
+DATA_DIR = Path(__file__).parent.parent / "data" / "texts"
+
+def show_rfc_details(rfc_num: int) -> dict:
+    """
+    Download (if needed) and return the full metadata + body for RFC {rfc_num}.
+    """
+    # ensure the directory exists
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    # fetch_details will pull from the network once and then cache locally
+    return client.fetch_details(rfc_num, save_dir=DATA_DIR, use_conditional=True)

@@ -4,7 +4,7 @@ WORKDIR /app
 # プロジェクト設定とコードをコピー
 COPY pyproject.toml poetry.lock /app/
 COPY src/ /app/src/
-
+COPY data/ /app/data
 RUN pip install --upgrade pip \
  && pip install poetry \
  && poetry config virtualenvs.create false \

@@ -8,8 +8,25 @@
         body { font-family: sans-serif; padding: 2rem; }
         input, button { padding: 0.5rem; margin: 0.5rem 0; }
         .rfc-list { margin-top: 1rem; }
-        .rfc-item { padding: 0.75rem; border-bottom: 1px solid #ccc; }
+        .rfc-item { padding: 0.75rem; border-bottom: 1px solid #ccc; cursor: pointer; }
+        .rfc-item:hover { background: #f5f5f5; }
+
+        /* 詳細エリアは初期状態で非表示 */
+        #detailContainer { display: none; margin-top: 2rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; position: relative; }
+        /* 閉じるボタンのスタイル */
+        .close-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            font-size: 1.25rem;
+            line-height: 1;
+        }
+        pre { white-space: pre-wrap; word-break: break-word; }
         #error { color: red; margin-left: 1rem; }
+        .mode-switch { margin-top: 1rem; }
     </style>
 </head>
 <body>
@@ -18,17 +35,24 @@
 <div>
     <label for="searchInput">検索クエリ：</label>
     <input id="searchInput" type="text" placeholder="HTTP" />
-    <button id="searchBtn">検索</button>
+    <button id="searchBtn">メタデータ検索</button>
+    <button id="fulltextBtn">全文検索</button>
     <span id="error"></span>
 </div>
 
+<!-- 詳細表示エリア -->
+<div id="detailContainer"></div>
+
+<!-- 検索結果一覧 -->
 <div class="rfc-list" id="resultContainer">
     <p>検索結果がここに表示されます</p>
 </div>
 
 <script>
     const resultContainer = document.getElementById('resultContainer');
+    const detailContainer = document.getElementById('detailContainer');
     const errorEl = document.getElementById('error');
+    let searchMode = 'metadata'; // 'metadata' or 'fulltext'
 
     async function fetchMetadata(save = false) {
         const res = await fetch(`/api/metadata?save=${save}`);
@@ -39,7 +63,33 @@
     async function searchMetadata(q) {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        return res.json();
+        const data = await res.json();
+        return data.results;
+    }
+
+    async function searchFulltext(q) {
+        const res = await fetch(`/api/fulltext?q=${encodeURIComponent(q)}`);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const data = await res.json();
+        return data.results; // Assume array of { number, snippet }
+    }
+
+    async function showRFC(num) {
+        const res = await fetch(`/api/show/${num}`);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const data = await res.json();
+        detailContainer.style.display = 'block';
+        detailContainer.innerHTML = `
+        <button class="close-btn" title="閉じる">✕</button>
+        <h2>RFC ${data.number.replace(/\D/g, '')}: ${data.title}</h2>
+        <p><strong>Date:</strong> ${data.date} &nbsp; <strong>Status:</strong> ${data.status}</p>
+        <pre>${data.body}</pre>
+      `;
+        detailContainer.querySelector('.close-btn').addEventListener('click', () => {
+            detailContainer.style.display = 'none';
+            detailContainer.innerHTML = '';
+        });
+        window.scrollTo({ top: detailContainer.offsetTop, behavior: 'smooth' });
     }
 
     function renderList(items) {
@@ -47,34 +97,73 @@
             resultContainer.innerHTML = '<p>結果なし</p>';
             return;
         }
-        resultContainer.innerHTML = items.map(item => {
-            if (typeof item === 'string') {
-                return `<div class="rfc-item">RFC ${item}</div>`;
-            } else if (item.number && item.title) {
-                return `<div class="rfc-item">${item.number}: ${item.title}</div>`;
-            }
-            return `<pre class="rfc-item">${JSON.stringify(item, null, 2)}</pre>`;
-        }).join('');
+        if (searchMode === 'metadata') {
+            resultContainer.innerHTML = items.map(item => {
+                const num = item.replace(/\D/g, '');
+                return `<div class="rfc-item" data-rfc="${num}">RFC ${num}</div>`;
+            }).join('');
+        } else {
+            // fulltext mode: items are objects with number & snippet
+            resultContainer.innerHTML = items.map(item => {
+                const num = String(item.number);
+                const snippet = item.snippet || '';
+                return `<div class="rfc-item" data-rfc="${num}">
+                    <strong>RFC ${num}</strong><br/>
+                    <span>${snippet}</span>
+                  </div>`;
+            }).join('');
+        }
     }
 
+    resultContainer.addEventListener('click', async (e) => {
+        const item = e.target.closest('.rfc-item');
+        if (!item) return;
+        errorEl.textContent = '';
+        detailContainer.style.display = 'none';
+        detailContainer.innerHTML = '';
+        try {
+            await showRFC(item.dataset.rfc);
+        } catch (err) {
+            errorEl.textContent = `Error: ${err.message}`;
+        }
+    });
+
     document.getElementById('searchBtn').addEventListener('click', async () => {
+        searchMode = 'metadata';
         const q = document.getElementById('searchInput').value.trim();
         errorEl.textContent = '';
+        detailContainer.style.display = 'none';
+        detailContainer.innerHTML = '';
         if (!q) return;
         try {
             const items = await searchMetadata(q);
             renderList(items);
-        } catch (e) {
-            errorEl.textContent = `Error: ${e.message}`;
+        } catch (err) {
+            errorEl.textContent = `Error: ${err.message}`;
+        }
+    });
+
+    document.getElementById('fulltextBtn').addEventListener('click', async () => {
+        searchMode = 'fulltext';
+        const q = document.getElementById('searchInput').value.trim();
+        errorEl.textContent = '';
+        detailContainer.style.display = 'none';
+        detailContainer.innerHTML = '';
+        if (!q) return;
+        try {
+            const items = await searchFulltext(q);
+            renderList(items);
+        } catch (err) {
+            errorEl.textContent = `Error: ${err.message}`;
         }
     });
 
     window.addEventListener('DOMContentLoaded', async () => {
         try {
             const all = await fetchMetadata();
-            renderList(all);
-        } catch (e) {
-            errorEl.textContent = `Error: ${e.message}`;
+            renderList(all.map(e => e.number));
+        } catch (err) {
+            errorEl.textContent = `Error: ${err.message}`;
         }
     });
 </script>
