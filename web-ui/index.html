@@ -1,55 +1,82 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#ffffff">
-    <title>RFC Chronicle Web UI</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RFC Chronicle CLI Web UI</title>
+    <style>
+        body { font-family: sans-serif; padding: 2rem; }
+        input, button { padding: 0.5rem; margin: 0.5rem 0; }
+        .rfc-list { margin-top: 1rem; }
+        .rfc-item { padding: 0.75rem; border-bottom: 1px solid #ccc; }
+        #error { color: red; margin-left: 1rem; }
+    </style>
 </head>
 <body>
 <h1>RFC Chronicle CLI Web UI</h1>
 
-<!-- 初期メタデータ表示 -->
-<pre id="app">読み込み中...</pre>
-
-<!-- 検索フォーム -->
 <div>
-    <input type="text" id="search-input" placeholder="検索クエリを入力" />
-    <button id="search-btn">検索</button>
+    <label for="searchInput">検索クエリ：</label>
+    <input id="searchInput" type="text" placeholder="HTTP" />
+    <button id="searchBtn">検索</button>
+    <span id="error"></span>
 </div>
-<pre id="results">検索結果がここに表示されます</pre>
+
+<div class="rfc-list" id="resultContainer">
+    <p>検索結果がここに表示されます</p>
+</div>
 
 <script>
-    // 初期メタデータ取得
-    async function fetchMetadata() {
-        try {
-            const res = await fetch('/api/metadata');
-            if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
-            const data = await res.json();
-            document.getElementById('app').textContent = JSON.stringify(data, null, 2);
-        } catch (err) {
-            document.getElementById('app').textContent = 'エラー: ' + err;
-        }
+    const resultContainer = document.getElementById('resultContainer');
+    const errorEl = document.getElementById('error');
+
+    async function fetchMetadata(save = false) {
+        const res = await fetch(`/api/metadata?save=${save}`);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.json();
     }
 
-    // 検索実行
-    document.getElementById('search-btn').addEventListener('click', async () => {
-        const q = document.getElementById('search-input').value;
-        const resultsEl = document.getElementById('results');
-        resultsEl.textContent = '検索中...';
+    async function searchMetadata(q) {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.json();
+    }
+
+    function renderList(items) {
+        if (!items || items.length === 0) {
+            resultContainer.innerHTML = '<p>結果なし</p>';
+            return;
+        }
+        resultContainer.innerHTML = items.map(item => {
+            if (typeof item === 'string') {
+                return `<div class="rfc-item">RFC ${item}</div>`;
+            } else if (item.number && item.title) {
+                return `<div class="rfc-item">${item.number}: ${item.title}</div>`;
+            }
+            return `<pre class="rfc-item">${JSON.stringify(item, null, 2)}</pre>`;
+        }).join('');
+    }
+
+    document.getElementById('searchBtn').addEventListener('click', async () => {
+        const q = document.getElementById('searchInput').value.trim();
+        errorEl.textContent = '';
+        if (!q) return;
         try {
-            const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-            if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
-            const data = await res.json();
-            resultsEl.textContent = JSON.stringify(data, null, 2);
-        } catch (err) {
-            resultsEl.textContent = 'エラー: ' + err;
+            const items = await searchMetadata(q);
+            renderList(items);
+        } catch (e) {
+            errorEl.textContent = `Error: ${e.message}`;
         }
     });
 
-    // ページ読み込み時に最初のデータ取得
-    fetchMetadata();
+    window.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const all = await fetchMetadata();
+            renderList(all);
+        } catch (e) {
+            errorEl.textContent = `Error: ${e.message}`;
+        }
+    });
 </script>
 </body>
 </html>
