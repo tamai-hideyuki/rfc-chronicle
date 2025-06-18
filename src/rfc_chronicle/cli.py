@@ -1,152 +1,204 @@
 import cmd
 import textwrap
 from pathlib import Path
+from importlib.metadata import version
+
 import click
+import numpy as np
+import faiss
 
-from .fetch_rfc import RFCClient
-from .build_faiss import build_faiss_index
-from .fulltext import search_fulltext, rebuild_fulltext_index
-from .search import search_metadata, semsearch
-from .pin import pin_rfc, unpin_rfc, list_pins
-from .formatters import format_json, format_csv, format_md
+from rfc_chronicle.fetch_rfc import RFCClient
+from rfc_chronicle.search import search_metadata, semsearch
+from rfc_chronicle.fulltext import search_fulltext, rebuild_fulltext_index
+from rfc_chronicle.build_faiss import build_faiss_index
+from rfc_chronicle.pin import pin_rfc, unpin_rfc, list_pins
+from rfc_chronicle.show import show_rfc_details
+from rfc_chronicle.formatters import format_json, format_csv, format_md
 
-# インタラクティブシェル用クライアント
-client = RFCClient()
+# ---------------------------------------------------------------------------
+# CLI entry point & interactive shell
+# ---------------------------------------------------------------------------
+__version__ = version("rfc-chronicle")
+
+client = RFCClient()  # shared client instance for the shell
+
 
 class RFCChronicleShell(cmd.Cmd):
-    """RFC Chronicle Shell: interactive interface for RFC operations"""
-    def __init__(self):
-        super().__init__()
-        # 標準ヘッダーを無効化
-        self.doc_header = None
-        self.undoc_header = None
+    """RFC Chronicle – interactive shell."""
 
-    intro = "Welcome to RFC Chronicle Shell. Type help or ? to list commands.\n"
+    intro = (
+        "Welcome to RFC Chronicle Shell. Type 'help' or '?' to list commands.\n"
+        "Tip: Use hyphens (e.g. build-faiss) just like the CLI commands."
+    )
     prompt = "> "
-    # ハイフンを含むコマンド名を許可
-    identchars = cmd.Cmd.identchars + '-'
+    identchars = cmd.Cmd.identchars + "-"  # allow hyphens in command names
 
-    # クラス属性も無効化
-    doc_header = None
-    undoc_header = None
-
-    # コマンド一覧と説明
-    help_text = {
-        "fetch":          "全 RFC メタデータを取得・保存",
-        "build-faiss":    "NumPy ベクトルから FAISS インデックスを生成/更新",
-        "fulltext":       "SQLite FTS5 で全文検索",
-        "index-fulltext": "FTS5 全文検索 DB を再構築",
-        "search":         "キャッシュ済みメタデータをキーワードで絞り込み",
-        "semsearch":      "FAISS を用いたセマンティック検索",
-        "pin":            "RFC をピン留め",
-        "pins":           "ピン一覧を表示",
-        "show":           "RFC 詳細を表示・エクスポート",
-        "unpin":          "ピンを解除",
-        "exit":           "シェルを終了",
+    # Simplified help mapping (command -> description)
+    _HELP = {
+        "fetch":          "Fetch and cache all RFC metadata",
+        "build-faiss":    "(Re)build FAISS index from vectors",
+        "fulltext":       "Full‑text search in cached documents",
+        "index-fulltext": "Rebuild the SQLite FTS5 index",
+        "search":         "Keyword search in cached metadata",
+        "semsearch":      "Semantic search via FAISS",
+        "pin":            "Pin an RFC number for later",
+        "pins":           "List pinned RFC numbers",
+        "show":           "Show / export RFC details",
+        "unpin":          "Unpin an RFC number",
+        "exit":           "Exit the shell",
     }
 
+    # ------------------------------------------------------------------ utils
     def parseline(self, line):
-        """ハイフン入りコマンド名を _ に変換"""
+        """Allow hyphenated commands by converting '-' -> '_' for method lookup."""
         cmd_name, arg, line = super().parseline(line)
         if cmd_name:
-            cmd_name = cmd_name.replace('-', '_')
+            cmd_name = cmd_name.replace("-", "_")
         return cmd_name, arg, line
 
-    def do_help(self, arg):
-        """コマンド一覧とヘルプ表示"""
+    def do_help(self, arg):  # noqa: N802  (cmd.Stdlib naming style)
+        """Show help for individual command or list all commands."""
         if arg:
-            func = getattr(self, 'do_' + arg.replace('-', '_'), None)
+            func = getattr(self, f"do_{arg.replace('-', '_')}", None)
             if func and func.__doc__:
                 print(textwrap.dedent(func.__doc__).strip())
             else:
-                print(f"No help for '{arg}'")
+                print(f"No help for '{arg}'.")
         else:
-            print("Commands:")
-            for name, desc in self.help_text.items():
+            print("Available commands:")
+            for name, desc in self._HELP.items():
                 print(f"  {name:<15} {desc}")
             print()
 
-    def do_fetch(self, arg):
-        """全 RFC メタデータを取得・保存"""
+    # ----------------------------------------------------------- core actions
+    def do_fetch(self, _):
+        """Fetch and cache *all* RFC metadata from the IETF site."""
         client.fetch_metadata(save=True)
 
-    def do_build_faiss(self, arg):
-        """NumPy ベクトルから FAISS インデックスを生成/更新"""
+    def do_build_faiss(self, _):
+        """Build / update FAISS index from the latest saved vectors."""
         build_faiss_index()
 
     def do_fulltext(self, arg):
-        """SQLite FTS5 で全文検索"""
+        """Full‑text search (SQLite FTS5):  fulltext <keyword>."""
         if not arg:
             print("Usage: fulltext <keyword>")
-        else:
-            for num, snippet in search_fulltext(arg):
-                print(f"RFC{num}\t…{snippet.strip()}…")
+            return
+        for num, snippet in search_fulltext(arg):
+            print(f"RFC{num}\t…{snippet.strip()}…")
 
-    def do_index_fulltext(self, arg):
-        """FTS5 全文検索 DB を再構築"""
+    def do_index_fulltext(self, _):
+        """Rebuild the FTS5 index from raw text corpus."""
         rebuild_fulltext_index()
 
     def do_search(self, arg):
-        """キャッシュ済みメタデータをキーワードで絞り込み"""
+        """Keyword search in cached metadata:  search <keyword>."""
         if not arg:
             print("Usage: search <keyword>")
-        else:
-            for rfc in search_metadata(arg):
-                print(rfc)
+            return
+        for rfc in search_metadata(arg):
+            print(rfc)
 
     def do_semsearch(self, arg):
-        """FAISS を用いたセマンティック検索"""
+        """Semantic search via FAISS:  semsearch <keyword>."""
         if not arg:
             print("Usage: semsearch <keyword>")
-        else:
-            for score, num in semsearch(arg):
-                print(f"RFC{num}: {score}")
+            return
+        for score, num in semsearch(arg):  # <score, rfc_num>
+            print(f"RFC{num}: {score:.4f}")
 
     def do_pin(self, arg):
-        """RFC をピン留め"""
+        """Pin an RFC number:  pin <number>."""
         pin_rfc(arg)
 
     def do_unpin(self, arg):
-        """ピンを解除"""
+        """Unpin an RFC number:  unpin <number>."""
         unpin_rfc(arg)
 
-    def do_pins(self, arg):
-        """ピン一覧を表示"""
-        print(", ".join(list_pins()))
+    def do_pins(self, _):
+        """List pinned RFC numbers."""
+        pins = list_pins()
+        print(", ".join(pins) if pins else "(none pinned)")
 
     def do_show(self, arg):
-        """RFC 詳細を表示・エクスポート: show <num> [json|csv|md]"""
-        if not arg:
+        """Show / export RFC details:  show <number> [json|csv|md]."""
+        parts = arg.split()
+        if not parts:
             print("Usage: show <number> [json|csv|md]")
             return
-        parts = arg.split()
         num = parts[0]
-        fmt = parts[1].lower() if len(parts)>1 else 'json'
-        save_dir = Path.cwd()/'data'/'texts'
-        details = client.fetch_details(num, save_dir)
-        records = details if isinstance(details, list) else [details]
-        if fmt=='json':
+        fmt = parts[1].lower() if len(parts) > 1 else "json"
+        save_dir = Path("data") / "texts"
+        records = show_rfc_details(num, save_dir)
+        if fmt == "json":
             print(format_json(records))
-        elif fmt=='csv':
+        elif fmt == "csv":
             print(format_csv(records))
-        elif fmt in ('md','markdown'):
+        elif fmt in {"md", "markdown"}:
             print(format_md(records))
         else:
             print(f"Unknown format: {fmt}")
 
-    def do_exit(self, arg):
-        """シェルを終了"""
+    def do_exit(self, _):
+        """Exit the shell."""
         return True
 
-@click.group()
-def cli():
-    """RFC Chronicle CLI"""
-    pass
 
-@cli.command('shell')
-def shell():
-    """Start interactive shell"""
+# ---------------------------------------------------------------------------
+# Click CLI definitions
+# ---------------------------------------------------------------------------
+@click.group()
+@click.version_option(__version__)
+def cli():
+    """RFC Chronicle – command‑line companion for browsing RFCs."""
+
+
+@cli.command("shell")
+def _shell_cmd():
+    """Start the interactive shell."""
     RFCChronicleShell().cmdloop()
 
-if __name__=='__main__':
+
+@cli.command("build_faiss")
+@click.option(
+    "--vectors",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Path to the .npy vectors file to index",
+)
+@click.option(
+    "--index",
+    type=click.Path(writable=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Output FAISS index file path",
+)
+@click.option(
+    "--index-type",
+    default="flat",
+    show_default=True,
+    help="Index type: flat, ivf=<nlist>, hnsw",
+)
+def _build_faiss_cmd(vectors: Path, index: Path, index_type: str):
+    """Build a FAISS index from saved sentence‑transformer vectors."""
+    vecs = np.load(vectors)
+    d = vecs.shape[1]
+
+    if index_type == "flat":
+        idx = faiss.IndexFlatIP(d)
+    elif index_type.startswith("ivf"):
+        nlist = int(index_type.split("=")[1]) if "=" in index_type else 100
+        quantizer = faiss.IndexFlatIP(d)
+        idx = faiss.IndexIVFFlat(quantizer, d, nlist, faiss.METRIC_INNER_PRODUCT)
+        idx.train(vecs)
+    elif index_type == "hnsw":
+        idx = faiss.IndexHNSWFlat(d, 32)
+    else:
+        raise click.BadParameter(f"Unknown index type: {index_type}")
+
+    idx.add(vecs.astype("float32"))
+    faiss.write_index(idx, str(index))
+    click.echo(f"✅ FAISS index '{index}' built (type: {index_type}, d={d}).")
+
+
+if __name__ == "__main__":
     cli()
