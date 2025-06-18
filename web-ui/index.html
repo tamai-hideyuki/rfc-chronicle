@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- PWA マニフェスト -->
-    <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#ffffff">
     <title>RFC Chronicle Web UI</title>
 </head>
 <body>
@@ -13,9 +12,10 @@
 <pre id="app">読み込み中...</pre>
 
 <script>
+    // モック JSON をフェッチ
     async function fetchMetadata() {
         try {
-            const res = await fetch('/api/metadata');
+            const res = await fetch('data/metadata.json');
             const data = await res.json();
             document.getElementById('app').textContent = JSON.stringify(data, null, 2);
         } catch (err) {
