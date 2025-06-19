@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-theme="light">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -20,20 +20,24 @@
 </div>
 
 <div id="detailContainer"></div>
-
 <div class="rfc-list" id="resultContainer">
     <p>検索結果がここに表示されます</p>
 </div>
-
 <div id="pagination" class="pagination"></div>
 
+<!-- テーマ切り替えボタン -->
+<button id="themeToggle" class="theme-toggle">🌙</button>
+
 <script>
+    // DOMショートカット
     const $ = id => document.getElementById(id);
     const resultContainer = $("resultContainer");
     const detailContainer = $("detailContainer");
     const errorEl         = $("error");
     const loadingEl       = $("loading");
     const paginationEl    = $("pagination");
+    const themeToggleBtn  = $("themeToggle");
+    const rootEl          = document.documentElement;
 
     let searchMode   = "metadata";
     let allItems     = [];
@@ -43,6 +47,7 @@
     const setLoading = flag =>
         loadingEl.style.display = flag ? "inline" : "none";
 
+    // APIフェッチ
     async function apiFetch(path) {
         const res  = await fetch(path, { headers: { "Accept": "application/json" } });
         const data = await res.json().catch(() => ({}));
@@ -50,15 +55,18 @@
         return data;
     }
 
+    // メタデータサマリ取得
     const fetchMetadata = () =>
         fetch("data/metadata_summary.json")
             .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); });
 
+    // 各種検索
     const searchMetadata  = q => apiFetch(`/api/search?q=${encodeURIComponent(q)}`).then(r => r.results);
     const searchFulltext  = q => apiFetch(`/api/fulltext?q=${encodeURIComponent(q)}`).then(r => r.results);
     const searchSemsearch = (q, topk = 20) =>
         apiFetch(`/api/semsearch?q=${encodeURIComponent(q)}&topk=${topk}`).then(r => r.results);
 
+    // 詳細表示
     async function showRFC(num) {
         const data = await apiFetch(`/api/show/${num}`);
         detailContainer.innerHTML = `
@@ -77,112 +85,86 @@
         detailContainer.scrollIntoView({ behavior: "smooth" });
     }
 
+    // 一覧更新
     function updateList(items) {
         allItems    = items;
         currentPage = 1;
         renderCurrentPage();
     }
 
+    // ページ分割描画
     function renderCurrentPage() {
         const start = (currentPage - 1) * itemsPerPage;
         renderList(allItems.slice(start, start + itemsPerPage));
         renderPagination();
     }
 
+    // リスト描画
     function renderList(items) {
         if (!items?.length) {
             resultContainer.innerHTML = "<p>結果なし</p>";
             return;
         }
-
         resultContainer.innerHTML = items.map(item => {
             let num, label;
-
             if (searchMode === "metadata") {
-                // オブジェクト ({ number, title }) か文字列 ("RFC 1") かを判定
                 if (typeof item === "string") {
-                    // いままで通り文字列リスト
                     num   = item.match(/\d+/)[0];
                     label = `RFC ${num}`;
                 } else {
-                    // summary.json や詳細オブジェクト
                     num   = item.number.replace(/\D/g, "");
                     label = `RFC ${num} – ${item.title}`;
                 }
-            }
-            else if (searchMode === "fulltext") {
+            } else if (searchMode === "fulltext") {
                 num   = item.number;
                 label = `RFC ${num} – ${item.snippet}`;
-            }
-            else {
+            } else {
                 num   = item.num;
                 label = `RFC ${num} (score: ${item.score.toFixed(4)})`;
             }
-
             return `<div class="rfc-item" data-rfc="${num}">${label}</div>`;
         }).join("");
     }
 
-
+    // ページネーション描画
     function renderPagination() {
         const totalPages = Math.ceil(allItems.length / itemsPerPage) || 1;
-        if (totalPages <= 1) {
-            paginationEl.innerHTML = "";
-            return;
-        }
+        if (totalPages <= 1) { paginationEl.innerHTML = ""; return; }
 
-        // 現在のページ番号を中心に前後 5 ページずつ、最大 10 ページ表示
         const windowSize = 10;
         const halfWindow = Math.floor(windowSize / 2);
         let startPage = Math.max(1, currentPage - halfWindow);
         let endPage   = Math.min(totalPages, startPage + windowSize - 1);
-
-        // 開始位置がシフトしたら終端も調整
         if (endPage - startPage + 1 < windowSize) {
             startPage = Math.max(1, endPage - windowSize + 1);
         }
 
         let html = "";
-
-        // 「最初へ」
         if (currentPage > 1) {
             html += `<button data-page="1">« First</button>`;
-        }
-
-        // 「Prev」
-        if (currentPage > 1) {
             html += `<button data-page="${currentPage - 1}">‹ Prev</button>`;
         }
-
-        // ページ番号
         for (let p = startPage; p <= endPage; p++) {
             html += `<button
-               class="${p === currentPage ? 'active' : ''}"
-               data-page="${p}"
-             >${p}</button>`;
+                  class="${p === currentPage ? 'active' : ''}"
+                  data-page="${p}"
+                >${p}</button>`;
         }
-
-        // 「Next」
         if (currentPage < totalPages) {
             html += `<button data-page="${currentPage + 1}">Next ›</button>`;
-        }
-
-        // 「最後へ」
-        if (currentPage < totalPages) {
             html += `<button data-page="${totalPages}">Last »</button>`;
         }
-
         paginationEl.innerHTML = html;
     }
 
+    // イベントバインド
     paginationEl.addEventListener("click", e => {
         if (e.target.tagName !== "BUTTON") return;
         const p = Number(e.target.dataset.page);
-        if (!p) return;
+        if (!p || p === currentPage) return;
         currentPage = p;
         renderCurrentPage();
     });
-
     resultContainer.addEventListener("click", e => {
         const el = e.target.closest(".rfc-item");
         if (!el) return;
@@ -208,12 +190,47 @@
             setLoading(false);
         }
     };
-
     $("searchBtn").onclick    = () => { searchMode = "metadata";  doSearch(searchMetadata); };
     $("fulltextBtn").onclick  = () => { searchMode = "fulltext";  doSearch(searchFulltext); };
     $("semsearchBtn").onclick = () => { searchMode = "semsearch"; doSearch(q => searchSemsearch(q, 20)); };
 
+    // テーマ切り替えロジック
+    function applyTheme(theme) {
+        rootEl.setAttribute("data-theme", theme);
+        themeToggleBtn.textContent = theme === "dark" ? "☀️" : "🌙";
+        localStorage.setItem("theme", theme);
+    }
+
+    // 初期ロード時にテーマ復元＆データ描画
     window.addEventListener("load", async () => {
+        // 1) 保存されたテーマを復元
+        const saved = localStorage.getItem("theme") || "light";
+        applyTheme(saved);
+
+        // 2) その後の既存の初期ロード処理
+        setLoading(true);
+        try {
+            const data = await fetchMetadata();
+            updateList(data);
+        } catch (err) {
+            errorEl.textContent = `Error: ${err.message}`;
+        } finally {
+            setLoading(false);
+        }
+    });
+
+    // ボタンクリックでトグル
+    themeToggleBtn.addEventListener("click", () => {
+        const next = rootEl.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        applyTheme(next);
+    });
+
+    // 初期処理
+    window.addEventListener("load", async () => {
+        // テーマ復元
+        const saved = localStorage.getItem("theme") || "light";
+        applyTheme(saved);
+
         setLoading(true);
         try {
             const data = await fetchMetadata();
