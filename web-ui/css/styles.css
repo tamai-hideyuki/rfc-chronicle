@@ -1,0 +1,131 @@
+/* ── ベース変数 ───────────────────────────────────────── */
+:root {
+    --gap: .5rem;
+    --radius: 4px;
+}
+
+/* ライト／ダークモードの共通＋切り替え用変数 */
+:root,
+[data-theme="light"] {
+    --bg: #ffffff;
+    --fg: #000000;
+    --item-hover: #f5f5f5;
+    --border: 1px solid #ccc;
+    --input-bg: #ffffff;
+}
+
+[data-theme="dark"] {
+    --bg: #121212;
+    --fg: #ececec;
+    --item-hover: #1e1e1e;
+    --border: 1px solid #444;
+    --input-bg: #1e1e1e;
+}
+
+/* ── レイアウト＆基本スタイル ───────────────────────── */
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: sans-serif;
+    padding: 2rem;
+}
+
+input,
+button {
+    padding: .5rem;
+    margin: var(--gap) 0;
+    background: var(--input-bg);
+    color: var(--fg);
+    border: var(--border);
+}
+
+button {
+    cursor: pointer;
+}
+
+.rfc-list {
+    margin-top: 1rem;
+}
+
+.rfc-item {
+    padding: .75rem;
+    border-bottom: var(--border);
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.rfc-item:hover {
+    background: var(--item-hover);
+}
+
+#detailContainer {
+    display: none;
+    margin-top: 2rem;
+    padding: 1rem;
+    border: var(--border);
+    border-radius: var(--radius);
+    background: var(--input-bg);
+    position: relative;
+    max-height: 75vh;
+    overflow: auto;
+}
+
+.close-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: transparent;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+}
+
+pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#error {
+    color: red;
+    margin-left: var(--gap);
+}
+
+#loading {
+    display: none;
+    margin-left: var(--gap);
+}
+
+/* ── ページネーション ───────────────────────── */
+.pagination {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap);
+    margin-top: var(--gap);
+}
+
+.pagination button {
+    padding: .25rem .5rem;
+    border: var(--border);
+    border-radius: var(--radius);
+    background: var(--input-bg);
+    color: var(--fg);
+}
+
+.pagination button.active {
+    font-weight: bold;
+    background: var(--item-hover);
+}
+
+/* ── テーマ切り替えボタン ───────────────────────── */
+.theme-toggle {
+    position: fixed;
+    bottom: var(--gap);
+    right: var(--gap);
+    padding: .5rem;
+    border: var(--border);
+    border-radius: var(--radius);
+    background: var(--input-bg);
+    color: var(--fg);
+    font-size: 1.2rem;
+    z-index: 1000;
+}
