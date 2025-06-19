@@ -1,0 +1,73 @@
+/* css/styles.css */
+:root {
+    --gap: .5rem;
+    --border: 1px solid #ccc;
+    --radius: 4px;
+}
+
+body {
+    font-family: sans-serif;
+    padding: 2rem;
+}
+
+input,
+button {
+    padding: .5rem;
+    margin: var(--gap) 0;
+}
+
+button {
+    cursor: pointer;
+}
+
+.rfc-list {
+    margin-top: 1rem;
+}
+
+.rfc-item {
+    padding: .75rem;
+    border-bottom: var(--border);
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.rfc-item:hover {
+    background: #f5f5f5;
+}
+
+#detailContainer {
+    display: none;
+    margin-top: 2rem;
+    padding: 1rem;
+    border: var(--border);
+    border-radius: var(--radius);
+    background: #fafafa;
+    position: relative;
+    max-height: 75vh;
+    overflow: auto;
+}
+
+.close-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: transparent;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+}
+
+pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#error {
+    color: red;
+    margin-left: var(--gap);
+}
+
+#loading {
+    display: none;
+    margin-left: var(--gap);
+}

@@ -4,48 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RFC Chronicle CLI Web UI</title>
-    <style>
-        :root {
-            --gap: .5rem;
-            --border: 1px solid #ccc;
-            --radius: 4px;
-        }
-        body { font-family: sans-serif; padding: 2rem; }
-        input, button { padding: .5rem; margin: var(--gap) 0; }
-        button { cursor: pointer; }
-        .rfc-list { margin-top: 1rem; }
-        .rfc-item {
-            padding: .75rem;
-            border-bottom: var(--border);
-            cursor: pointer;
-            transition: background .15s;
-        }
-        .rfc-item:hover { background: #f5f5f5; }
-
-        #detailContainer {
-            display: none;
-            margin-top: 2rem;
-            padding: 1rem;
-            border: var(--border);
-            border-radius: var(--radius);
-            background: #fafafa;
-            position: relative;
-            max-height: 75vh;
-            overflow: auto;
-        }
-        .close-btn {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: transparent;
-            border: none;
-            font-size: 1.25rem;
-            cursor: pointer;
-        }
-        pre { white-space: pre-wrap; word-break: break-word; }
-        #error { color: red; margin-left: var(--gap); }
-        #loading { display: none; margin-left: var(--gap); }
-    </style>
+    <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
 <h1>RFC Chronicle CLI Web UI</h1>
@@ -61,52 +20,60 @@
 </div>
 
 <div id="detailContainer"></div>
-<div class="rfc-list" id="resultContainer"><p>検索結果がここに表示されます</p></div>
+<div class="rfc-list" id="resultContainer">
+    <p>検索結果がここに表示されます</p>
+</div>
 
 <script>
-    // ユーティリティ
+    // 短縮DOM取得
     const $ = id => document.getElementById(id);
     const resultContainer = $("resultContainer");
     const detailContainer = $("detailContainer");
-    const errorEl         = $("error");
-    const loadingEl       = $("loading");
-    let   searchMode      = "metadata";
+    const errorEl = $("error");
+    const loadingEl = $("loading");
+    let searchMode = "metadata";
 
     const setLoading = flag => loadingEl.style.display = flag ? "inline" : "none";
 
-    // HTTP レスポンス共通処理
+    // 汎用APIフェッチ
     async function apiFetch(path) {
         const res = await fetch(path, { headers: { "Accept": "application/json" } });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            const msg = data.detail || JSON.stringify(data);
-            throw new Error(msg);
-        }
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
         return data;
     }
 
-    // API ヘルパー
-    const fetchMetadata   = () => apiFetch("/api/metadata?save=false");
+    // 初期メタデータは軽量サマリを直接fetch
+    const fetchMetadata = () =>
+        fetch("data/metadata_summary.json")
+            .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); });
+
+    // 検索用API
     const searchMetadata  = q => apiFetch(`/api/search?q=${encodeURIComponent(q)}`).then(r => r.results);
     const searchFulltext  = q => apiFetch(`/api/fulltext?q=${encodeURIComponent(q)}`).then(r => r.results);
-    const searchSemsearch = (q, topk = 20) => apiFetch(
-        `/api/semsearch?q=${encodeURIComponent(q)}&topk=${topk}`
-    ).then(r => r.results);
+    const searchSemsearch = (q, topk = 20) =>
+        apiFetch(`/api/semsearch?q=${encodeURIComponent(q)}&topk=${topk}`).then(r => r.results);
 
     // 詳細表示
     async function showRFC(num) {
         const data = await apiFetch(`/api/show/${num}`);
         detailContainer.innerHTML = `
-            <button class="close-btn" title="閉じる">✕</button>
-            <h2>RFC ${data.number.replace(/\D/g, "")}： ${data.title}</h2>
-            <p><strong>Date:</strong> ${data.date} &nbsp; <strong>Status:</strong> ${data.status}</p>
-            <pre>${data.body}</pre>`;
+        <button class="close-btn" title="閉じる">✕</button>
+        <h2>RFC ${data.number.replace(/\D/g, "")} – ${data.title}</h2>
+        <p>
+          <strong>Date:</strong> ${data.date}
+          &nbsp;
+          <strong>Status:</strong> ${data.status}
+        </p>
+        <pre>${data.body}</pre>
+      `;
         detailContainer.style.display = "block";
-        detailContainer.querySelector(".close-btn").onclick = () => detailContainer.style.display = "none";
+        detailContainer.querySelector(".close-btn")
+            .onclick = () => detailContainer.style.display = "none";
         detailContainer.scrollIntoView({ behavior: "smooth" });
     }
 
-    // リスト描画
+    // 一覧描画
     function renderList(items) {
         if (!items?.length) {
             resultContainer.innerHTML = "<p>結果なし</p>";
@@ -115,13 +82,12 @@
         resultContainer.innerHTML = items.map(item => {
             let num, label;
             if (searchMode === "metadata") {
-                num   = item.match(/\d+/)[0];
-                label = `RFC ${num}`;
+                num   = item.number.replace(/\D/g, "");
+                label = `RFC ${num} – ${item.title}`;
             } else if (searchMode === "fulltext") {
                 num   = item.number;
                 label = `RFC ${num} – ${item.snippet}`;
             } else {
-                // セマンティック検索: API が返す { num, score } を直接使用
                 num   = item.num;
                 label = `RFC ${num} (score: ${item.score.toFixed(4)})`;
             }
@@ -129,7 +95,7 @@
         }).join("");
     }
 
-    // クリックイベント
+    // アイテム click ハンドラ
     resultContainer.addEventListener("click", e => {
         const el = e.target.closest(".rfc-item");
         if (!el) return;
@@ -157,18 +123,16 @@
         }
     };
 
-    // ボタンバインド
     $("searchBtn").onclick    = () => { searchMode = "metadata";  doSearch(searchMetadata); };
     $("fulltextBtn").onclick  = () => { searchMode = "fulltext";  doSearch(searchFulltext); };
     $("semsearchBtn").onclick = () => { searchMode = "semsearch"; doSearch(q => searchSemsearch(q, 20)); };
 
-    // 初期処理: メタデータ読み込み
+    // 初期ロード：サマリを描画
     window.addEventListener("load", async () => {
         setLoading(true);
         try {
             const data = await fetchMetadata();
-            // metadata は番号文字列の配列
-            renderList(data.map(e => e.number));
+            renderList(data);
         } catch (err) {
             errorEl.textContent = `Error: ${err.message}`;
         } finally {
