@@ -1,131 +1,119 @@
-/* ── ベース変数 ───────────────────────────────────────── */
 :root {
-    --gap: .5rem;
-    --radius: 4px;
+    --border: #ccc;
+    --bg: #fff;
+    --shadow: rgba(0, 0, 0, 0.1) 0px 4px 12px;
+    --primary: #007acc;
 }
-
-/* ライト／ダークモードの共通＋切り替え用変数 */
-:root,
-[data-theme="light"] {
-    --bg: #ffffff;
-    --fg: #000000;
-    --item-hover: #f5f5f5;
-    --border: 1px solid #ccc;
-    --input-bg: #ffffff;
-}
-
-[data-theme="dark"] {
-    --bg: #121212;
-    --fg: #ececec;
-    --item-hover: #1e1e1e;
-    --border: 1px solid #444;
-    --input-bg: #1e1e1e;
-}
-
-/* ── レイアウト＆基本スタイル ───────────────────────── */
 body {
-    background: var(--bg);
-    color: var(--fg);
+    margin: 0;
     font-family: sans-serif;
-    padding: 2rem;
 }
-
-input,
-button {
-    padding: .5rem;
-    margin: var(--gap) 0;
-    background: var(--input-bg);
-    color: var(--fg);
-    border: var(--border);
+h1 {
+    margin: 1rem;
+    font-size: 1.5rem;
 }
-
-button {
-    cursor: pointer;
-}
-
-.rfc-list {
-    margin-top: 1rem;
-}
-
-.rfc-item {
-    padding: .75rem;
-    border-bottom: var(--border);
-    cursor: pointer;
-    transition: background .15s;
-}
-
-.rfc-item:hover {
-    background: var(--item-hover);
-}
-
-#detailContainer {
-    display: none;
-    margin-top: 2rem;
-    padding: 1rem;
-    border: var(--border);
-    border-radius: var(--radius);
-    background: var(--input-bg);
-    position: relative;
-    max-height: 75vh;
-    overflow: auto;
-}
-
-.close-btn {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    background: transparent;
-    border: none;
-    font-size: 1.25rem;
-    cursor: pointer;
-}
-
-pre {
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-#error {
-    color: red;
-    margin-left: var(--gap);
-}
-
-#loading {
-    display: none;
-    margin-left: var(--gap);
-}
-
-/* ── ページネーション ───────────────────────── */
-.pagination {
+.layout {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--gap);
-    margin-top: var(--gap);
+    height: calc(100vh - 4rem);
 }
-
+/* Pinned list panel */
+#pinSidebar {
+    width: 200px;
+    padding: 1rem;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    background: var(--bg);
+}
+#pinSidebar h2 {
+    margin-top: 0;
+    font-size: 1.1rem;
+}
+#pinList {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+}
+#pinList li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0;
+}
+#pinList .pin-label {
+    cursor: pointer;
+    text-decoration: underline;
+}
+#pinList .pin-label:hover {
+    color: var(--primary);
+}
+/* Main content */
+main {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+}
+.search-bar {
+    margin-bottom: 1rem;
+}
+.search-bar input {
+    width: 200px;
+}
+.rfc-item {
+    position: relative;
+    padding: 0.5rem 2.5rem 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+}
+.item-pin-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2em;
+    line-height: 1;
+}
+#detailContainer {
+    position: relative;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    box-shadow: var(--shadow);
+    display: none;
+}
+#pinToggleBtn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1em;
+}
+.pagination {
+    margin-top: 1rem;
+    text-align: center;
+}
 .pagination button {
-    padding: .25rem .5rem;
-    border: var(--border);
-    border-radius: var(--radius);
-    background: var(--input-bg);
-    color: var(--fg);
+    margin: 0 0.25rem;
+    background: none;
+    border: 1px solid var(--border);
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
 }
-
-.pagination button.active {
-    font-weight: bold;
-    background: var(--item-hover);
+.pagination .active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
 }
-
-/* ── テーマ切り替えボタン ───────────────────────── */
+/* Theme toggle */
 .theme-toggle {
     position: fixed;
-    bottom: var(--gap);
-    right: var(--gap);
-    padding: .5rem;
-    border: var(--border);
-    border-radius: var(--radius);
-    background: var(--input-bg);
-    color: var(--fg);
-    font-size: 1.2rem;
-    z-index: 1000;
+    bottom: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
 }

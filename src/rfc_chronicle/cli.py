@@ -197,7 +197,33 @@ def _build_faiss_cmd(vectors: Path, index: Path, index_type: str):
 
     idx.add(vecs.astype("float32"))
     faiss.write_index(idx, str(index))
-    click.echo(f"✅ FAISS index '{index}' built (type: {index_type}, d={d}).")
+    click.echo(f" FAISS index '{index}' built (type: {index_type}, d={d}).")
+
+
+    @cli.command("pin")
+    @click.argument("number")
+    def _pin_cmd(number: str):
+        """Pin an RFC number for later reference."""
+        pin_rfc(number)
+        click.echo(f"Pinned RFC {number}")
+
+    @cli.command("unpin")
+    @click.argument("number")
+    def _unpin_cmd(number: str):
+        """Remove an RFC number from your pins."""
+        unpin_rfc(number)
+        click.echo(f"Unpinned RFC {number}")
+
+    @cli.command("pins")
+    def _list_pins_cmd():
+        """List all pinned RFC numbers."""
+        pins = list_pins()
+        if not pins:
+            click.echo("(none pinned)")
+        else:
+            click.echo("Pinned RFCs:")
+            for n in pins:
+                click.echo(f"- RFC {n}")
 
 
 if __name__ == "__main__":
