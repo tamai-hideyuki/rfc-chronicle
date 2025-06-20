@@ -9,237 +9,188 @@
 <body>
 <h1>RFC Chronicle CLI Web UI</h1>
 
-<div>
-    <label for="searchInput">検索クエリ：</label>
-    <input id="searchInput" type="text" placeholder="例: HTTP" />
-    <button id="searchBtn">メタデータ検索</button>
-    <button id="fulltextBtn">全文検索</button>
-    <button id="semsearchBtn">セマンティック検索</button>
-    <span id="loading">読み込み中...</span>
-    <span id="error"></span>
+<div class="layout">
+    <aside id="pinSidebar">
+        <h2>Pinned RFCs</h2>
+        <ul id="pinList">
+            <li>(none)</li>
+        </ul>
+    </aside>
+
+    <main>
+        <div class="search-bar">
+            <label for="searchInput">検索クエリ：</label>
+            <input id="searchInput" type="text" placeholder="例: HTTP" />
+            <button id="searchBtn">メタデータ検索</button>
+            <button id="fulltextBtn">全文検索</button>
+            <button id="semsearchBtn">セマンティック検索</button>
+            <span id="loading" style="display:none">読み込み中...</span>
+            <span id="error" style="color:red;"></span>
+        </div>
+        <div id="detailContainer"></div>
+        <div id="resultContainer"><p>検索結果がここに表示されます</p></div>
+        <div id="pagination" class="pagination"></div>
+    </main>
 </div>
 
-<div id="detailContainer"></div>
-<div class="rfc-list" id="resultContainer">
-    <p>検索結果がここに表示されます</p>
-</div>
-<div id="pagination" class="pagination"></div>
-
-<!-- テーマ切り替えボタン -->
 <button id="themeToggle" class="theme-toggle">🌙</button>
 
 <script>
-    // DOMショートカット
-    const $ = id => document.getElementById(id);
-    const resultContainer = $("resultContainer");
-    const detailContainer = $("detailContainer");
-    const errorEl         = $("error");
-    const loadingEl       = $("loading");
-    const paginationEl    = $("pagination");
-    const themeToggleBtn  = $("themeToggle");
-    const rootEl          = document.documentElement;
+    document.addEventListener('DOMContentLoaded', () => {
+        const $ = id => document.getElementById(id);
+        const resultContainer = $('resultContainer');
+        const detailContainer = $('detailContainer');
+        const errorEl = $('error');
+        const loadingEl = $('loading');
+        const paginationEl = $('pagination');
+        const themeToggleBtn = $('themeToggle');
+        const rootEl = document.documentElement;
+        const pinListEl = $('pinList');
+        let searchMode = 'metadata', allItems = [], currentPage = 1;
+        const itemsPerPage = 30;
 
-    let searchMode   = "metadata";
-    let allItems     = [];
-    let currentPage  = 1;
-    const itemsPerPage = 30;
+        const setLoading = flag => loadingEl.style.display = flag ? 'inline' : 'none';
+        const apiFetch = async (path, opts={}) => {
+            const res = await fetch(path, { headers:{'Accept':'application/json'}, ...opts });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+            return data;
+        };
+        const fetchMetadata   = () => fetch('data/metadata_summary.json').then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
+        const searchMetadata  = q => apiFetch(`/api/search?q=${encodeURIComponent(q)}`).then(r => r.results);
+        const searchFulltext  = q => apiFetch(`/api/fulltext?q=${encodeURIComponent(q)}`).then(r => r.results);
+        const searchSemsearch = (q, k=20) => apiFetch(`/api/semsearch?q=${encodeURIComponent(q)}&topk=${k}`).then(r => r.results);
+        const fetchPins = () => apiFetch('/api/pins', {method:'GET'});
+        const pinRFC     = num => apiFetch('/api/pins',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number:num})});
+        const unpinRFC   = num => apiFetch(`/api/pins/${num}`,{method:'DELETE'});
 
-    const setLoading = flag =>
-        loadingEl.style.display = flag ? "inline" : "none";
-
-    // APIフェッチ
-    async function apiFetch(path) {
-        const res  = await fetch(path, { headers: { "Accept": "application/json" } });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
-        return data;
-    }
-
-    // メタデータサマリ取得
-    const fetchMetadata = () =>
-        fetch("data/metadata_summary.json")
-            .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); });
-
-    // 各種検索
-    const searchMetadata  = q => apiFetch(`/api/search?q=${encodeURIComponent(q)}`).then(r => r.results);
-    const searchFulltext  = q => apiFetch(`/api/fulltext?q=${encodeURIComponent(q)}`).then(r => r.results);
-    const searchSemsearch = (q, topk = 20) =>
-        apiFetch(`/api/semsearch?q=${encodeURIComponent(q)}&topk=${topk}`).then(r => r.results);
-
-    // 詳細表示
-    async function showRFC(num) {
-        const data = await apiFetch(`/api/show/${num}`);
-        detailContainer.innerHTML = `
-        <button class="close-btn" title="閉じる">✕</button>
-        <h2>RFC ${data.number.replace(/\D/g, "")} – ${data.title}</h2>
-        <p>
-          <strong>Date:</strong> ${data.date}
-          &nbsp;
-          <strong>Status:</strong> ${data.status}
-        </p>
-        <pre>${data.body}</pre>
-      `;
-        detailContainer.style.display = "block";
-        detailContainer.querySelector(".close-btn")
-            .onclick = () => detailContainer.style.display = "none";
-        detailContainer.scrollIntoView({ behavior: "smooth" });
-    }
-
-    // 一覧更新
-    function updateList(items) {
-        allItems    = items;
-        currentPage = 1;
-        renderCurrentPage();
-    }
-
-    // ページ分割描画
-    function renderCurrentPage() {
-        const start = (currentPage - 1) * itemsPerPage;
-        renderList(allItems.slice(start, start + itemsPerPage));
-        renderPagination();
-    }
-
-    // リスト描画
-    function renderList(items) {
-        if (!items?.length) {
-            resultContainer.innerHTML = "<p>結果なし</p>";
-            return;
-        }
-        resultContainer.innerHTML = items.map(item => {
-            let num, label;
-            if (searchMode === "metadata") {
-                if (typeof item === "string") {
-                    num   = item.match(/\d+/)[0];
-                    label = `RFC ${num}`;
-                } else {
-                    num   = item.number.replace(/\D/g, "");
-                    label = `RFC ${num} – ${item.title}`;
-                }
-            } else if (searchMode === "fulltext") {
-                num   = item.number;
-                label = `RFC ${num} – ${item.snippet}`;
-            } else {
-                num   = item.num;
-                label = `RFC ${num} (score: ${item.score.toFixed(4)})`;
+        const renderPins = async () => {
+            try {
+                const pins = await fetchPins();
+                pinListEl.innerHTML = pins.length
+                    ? pins.map(n => `<li data-rfc="${n}"><span class="pin-label">RFC ${n}</span><button class="unpin-btn" data-rfc="${n}" title="Unpin">✖️</button></li>`).join('')
+                    : '<li>(none)</li>';
+            } catch (e) {
+                pinListEl.innerHTML = `<li>Error: ${e.message}</li>`;
             }
-            return `<div class="rfc-item" data-rfc="${num}">${label}</div>`;
-        }).join("");
-    }
+        };
 
-    // ページネーション描画
-    function renderPagination() {
-        const totalPages = Math.ceil(allItems.length / itemsPerPage) || 1;
-        if (totalPages <= 1) { paginationEl.innerHTML = ""; return; }
+        pinListEl.addEventListener('click', async e => {
+            const li = e.target.closest('li[data-rfc]');
+            if (!li) return;
+            const num = li.dataset.rfc;
+            if (e.target.matches('.unpin-btn')) {
+                e.stopPropagation();
+                await unpinRFC(num).then(renderPins).catch(err => alert(`Unpin failed: ${err}`));
+            } else {
+                errorEl.textContent = '';
+                setLoading(true);
+                await showRFC(num).catch(err => errorEl.textContent = `Error: ${err.message}`).finally(() => setLoading(false));
+            }
+        });
 
-        const windowSize = 10;
-        const halfWindow = Math.floor(windowSize / 2);
-        let startPage = Math.max(1, currentPage - halfWindow);
-        let endPage   = Math.min(totalPages, startPage + windowSize - 1);
-        if (endPage - startPage + 1 < windowSize) {
-            startPage = Math.max(1, endPage - windowSize + 1);
-        }
+        const showRFC = async num => {
+            const data = await apiFetch(`/api/show/${num}`);
+            const pins = await fetchPins();
+            let isPinned = pins.includes(num);
+            detailContainer.innerHTML = `
+          <button class="close-btn" title="閉じる">✕</button>
+          <h2>RFC ${num} – ${data.title}</h2>
+          <p><strong>Date:</strong> ${data.date} &nbsp;<strong>Status:</strong> ${data.status}</p>
+          <button id="pinToggleBtn">${isPinned?'✅':'☑️'}</button>
+          <pre>${data.body}</pre>`;
+            detailContainer.style.display = 'block';
+            $('pinToggleBtn').onclick = async () => {
+                await (isPinned ? unpinRFC(num) : pinRFC(num));
+                isPinned = !isPinned;
+                $('pinToggleBtn').textContent = isPinned?'✅':'☑️';
+                renderPins();
+            };
+            detailContainer.querySelector('.close-btn').onclick = () => detailContainer.style.display = 'none';
+            detailContainer.scrollIntoView({behavior:'smooth'});
+        };
 
-        let html = "";
-        if (currentPage > 1) {
-            html += `<button data-page="1">« First</button>`;
-            html += `<button data-page="${currentPage - 1}">‹ Prev</button>`;
-        }
-        for (let p = startPage; p <= endPage; p++) {
-            html += `<button
-                  class="${p === currentPage ? 'active' : ''}"
-                  data-page="${p}"
-                >${p}</button>`;
-        }
-        if (currentPage < totalPages) {
-            html += `<button data-page="${currentPage + 1}">Next ›</button>`;
-            html += `<button data-page="${totalPages}">Last »</button>`;
-        }
-        paginationEl.innerHTML = html;
-    }
+        const renderList = items => {
+            resultContainer.innerHTML = items.length
+                ? items.map(item => {
+                    let num, label;
+                    if (searchMode==='metadata') {
+                        if (typeof item==='string') { num=item.match(/\d+/)[0]; label=`RFC ${num}`; }
+                        else { num=item.number.replace(/\D/g,''); label=`RFC ${num} – ${item.title}`; }
+                    } else if (searchMode==='fulltext') {
+                        num=item.number; label=`RFC ${num} – ${item.snippet}`;
+                    } else {
+                        num=item.num; label=`RFC ${num} (score:${item.score.toFixed(4)})`;
+                    }
+                    return `<div class="rfc-item" data-rfc="${num}"><span>${label}</span><button class="item-pin-btn" data-rfc="${num}" title="Pin">☑️</button></div>`;
+                }).join('')
+                : '<p>結果なし</p>';
+        };
 
-    // イベントバインド
-    paginationEl.addEventListener("click", e => {
-        if (e.target.tagName !== "BUTTON") return;
-        const p = Number(e.target.dataset.page);
-        if (!p || p === currentPage) return;
-        currentPage = p;
-        renderCurrentPage();
-    });
-    resultContainer.addEventListener("click", e => {
-        const el = e.target.closest(".rfc-item");
-        if (!el) return;
-        errorEl.textContent = "";
-        setLoading(true);
-        showRFC(el.dataset.rfc)
-            .catch(err => errorEl.textContent = `Error: ${err.message}`)
-            .finally(() => setLoading(false));
-    });
+        resultContainer.addEventListener('click', async e => {
+            if (e.target.matches('.item-pin-btn')) {
+                e.stopPropagation();
+                const num = e.target.dataset.rfc;
+                await pinRFC(num).then(renderPins).catch(err => alert(`Pin failed: ${err}`));
+                return;
+            }
+            const el = e.target.closest('.rfc-item');
+            if (!el) return;
+            errorEl.textContent=''; setLoading(true);
+            await showRFC(el.dataset.rfc).catch(err=>errorEl.textContent=`Error: ${err.message}`).finally(()=>setLoading(false));
+        });
 
-    const doSearch = async fn => {
-        const q = $("searchInput").value.trim();
-        if (!q) return;
-        errorEl.textContent = "";
-        detailContainer.style.display = "none";
-        setLoading(true);
-        try {
-            const items = await fn(q);
-            updateList(items);
-        } catch (err) {
-            errorEl.textContent = `Error: ${err.message}`;
-        } finally {
-            setLoading(false);
-        }
-    };
-    $("searchBtn").onclick    = () => { searchMode = "metadata";  doSearch(searchMetadata); };
-    $("fulltextBtn").onclick  = () => { searchMode = "fulltext";  doSearch(searchFulltext); };
-    $("semsearchBtn").onclick = () => { searchMode = "semsearch"; doSearch(q => searchSemsearch(q, 20)); };
+        const renderPagination = () => {
+            const total = Math.ceil(allItems.length/itemsPerPage) || 1;
+            if (total<=1) { paginationEl.innerHTML = ''; return; }
+            let html='', half=5, start=Math.max(1,currentPage-half), end=Math.min(total,start+9);
+            if (currentPage>1) html+=`<button data-page="1">«</button><button data-page="${currentPage-1}">‹</button>`;
+            for(let p=start;p<=end;p++) html+=`<button class="${p===currentPage?'active':''}" data-page="${p}">${p}</button>`;
+            if (currentPage<total) html+=`<button data-page="${currentPage+1}">›</button><button data-page="${total}">»</button>`;
+            paginationEl.innerHTML = html;
+        };
 
-    // テーマ切り替えロジック
-    function applyTheme(theme) {
-        rootEl.setAttribute("data-theme", theme);
-        themeToggleBtn.textContent = theme === "dark" ? "☀️" : "🌙";
-        localStorage.setItem("theme", theme);
-    }
+        paginationEl.addEventListener('click', e => {
+            if (e.target.tagName!=='BUTTON') return;
+            const p = +e.target.dataset.page;
+            if (p && p!==currentPage) { currentPage=p; renderCurrentPage(); }
+        });
 
-    // 初期ロード時にテーマ復元＆データ描画
-    window.addEventListener("load", async () => {
-        // 1) 保存されたテーマを復元
-        const saved = localStorage.getItem("theme") || "light";
-        applyTheme(saved);
+        const updateList = items => { allItems=items; currentPage=1; renderCurrentPage(); };
+        const renderCurrentPage = () => {
+            const start=(currentPage-1)*itemsPerPage;
+            renderList(allItems.slice(start,start+itemsPerPage));
+            renderPagination();
+        };
 
-        // 2) その後の既存の初期ロード処理
-        setLoading(true);
-        try {
-            const data = await fetchMetadata();
-            updateList(data);
-        } catch (err) {
-            errorEl.textContent = `Error: ${err.message}`;
-        } finally {
-            setLoading(false);
-        }
-    });
+        const doSearch = async fn => {
+            const q=$('searchInput').value.trim();
+            if (!q) return;
+            errorEl.textContent=''; detailContainer.style.display='none'; setLoading(true);
+            try { updateList(await fn(q)); }
+            catch(err){ errorEl.textContent=`Error: ${err.message}`; }
+            finally{ setLoading(false); }
+        };
 
-    // ボタンクリックでトグル
-    themeToggleBtn.addEventListener("click", () => {
-        const next = rootEl.getAttribute("data-theme") === "dark" ? "light" : "dark";
-        applyTheme(next);
-    });
+        $('searchBtn').onclick    = ()=>{searchMode='metadata';   doSearch(searchMetadata);};
+        $('fulltextBtn').onclick  = ()=>{searchMode='fulltext';   doSearch(searchFulltext);};
+        $('semsearchBtn').onclick = ()=>{searchMode='semsearch';  doSearch(q=>searchSemsearch(q,20));};
 
-    // 初期処理
-    window.addEventListener("load", async () => {
-        // テーマ復元
-        const saved = localStorage.getItem("theme") || "light";
-        applyTheme(saved);
+        const applyTheme = theme => {
+            rootEl.setAttribute('data-theme',theme);
+            themeToggleBtn.textContent = theme==='dark'?'☀️':'🌙';
+            localStorage.setItem('theme',theme);
+        };
+        themeToggleBtn.onclick = () => applyTheme(rootEl.getAttribute('data-theme')==='dark'?'light':'dark');
 
-        setLoading(true);
-        try {
-            const data = await fetchMetadata();
-            updateList(data);
-        } catch (err) {
-            errorEl.textContent = `Error: ${err.message}`;
-        } finally {
-            setLoading(false);
-        }
+        (async ()=> {
+            applyTheme(localStorage.getItem('theme')||'light');
+            await renderPins();
+            setLoading(true);
+            try { updateList(await fetchMetadata()); }
+            catch(err){ errorEl.textContent=`Error: ${err}`; }
+            finally{ setLoading(false); }
+        })();
     });
 </script>
 </body>
