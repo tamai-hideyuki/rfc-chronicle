@@ -2,7 +2,7 @@ services:
   api:
     build:
       context: ".."
-      dockerfile: "docker/Dockerfile.backend"
+      dockerfile: "docker/backend.Dockerfile"
     container_name: rfc-api
     ports:
       - "5001:5000"
@@ -11,7 +11,7 @@ services:
   web:
     build:
       context: ".."
-      dockerfile: "docker/Dockerfile.frontend"
+      dockerfile: "docker/frontend.Dockerfile"
     container_name: rfc-web-ui
     depends_on:
       - api

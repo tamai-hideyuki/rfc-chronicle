@@ -1,10 +1,10 @@
 metadata.json
-.rfc_data
+../backup/.rfc_data
 # Python bytecode
 __pycache__/
 *.py[cod]
-
+data/
 .idea/
 .venv
-data/
-
+../backup/data/
+.rfc_data
